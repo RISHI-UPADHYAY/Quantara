@@ -1,4 +1,5 @@
 from passlib.context import CryptContext
+import hashlib
 
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
@@ -6,7 +7,8 @@ from jose import jwt, JWTError
 from app.core.config import (
     SECRET_KEY,
     ALGORITHM,
-    ACCESS_TOKEN_EXPIRE_MINUTES
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    REFRESH_TOKEN_EXPIRE_DAYS,
 )
 
 def create_access_token(data: dict) -> str:
@@ -22,6 +24,19 @@ def create_access_token(data: dict) -> str:
         algorithm=ALGORITHM,
     )
     return encoded_jwt
+
+def create_refresh_token(data: dict) -> str:
+    to_encode = data.copy()
+
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    to_encode.update({"exp": expire})
+
+    return jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
 
 pwd_context = CryptContext(
     schemes=["bcrypt"],
@@ -44,3 +59,20 @@ def decode_access_token(token: str):
         return payload
     except JWTError:
         return None
+    
+def decode_refresh_token(token: str):
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+        return payload
+    except JWTError:
+        return None
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def get_refresh_token_expiry():
+    return datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)

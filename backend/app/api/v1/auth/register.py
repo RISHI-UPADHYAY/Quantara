@@ -5,6 +5,7 @@ from app.dependencies.database import get_db
 from app.schemas.user import UserCreate, UserResponse
 from app.services.auth_service import AuthService
 from app.repositories.user_repository import UserRepository
+from app.repositories.refresh_token_repository import RefreshTokenRepository
 
 router = APIRouter()
 
@@ -16,7 +17,9 @@ router = APIRouter()
 
 def register(user:UserCreate, db: Session=Depends(get_db)):
     user_repository = UserRepository(db)
-    auth_service = AuthService(user_repository)
+    refresh_token_repository = RefreshTokenRepository(db)
+    
+    auth_service = AuthService(user_repository, refresh_token_repository)
 
     try:
         return auth_service.register_user(user)
