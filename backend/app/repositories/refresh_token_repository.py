@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from app.models.refresh_token import RefreshToken
@@ -22,23 +24,22 @@ class RefreshTokenRepository:
 
         return refresh_token
     
-    def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+    def get_refresh_token_by_hash(self, token_hash: str) -> RefreshToken | None:
         return (
             self.db.query(RefreshToken)
             .filter(RefreshToken.token_hash == token_hash)
             .first()
         )
     
-    def revoke_token(self, token_hash: str):
-        token = self.get_by_hash(token_hash)
+    def revoke_token(self, refresh_token: RefreshToken) -> RefreshToken:
+        refresh_token.revoked = True
 
-        if token:
-            token.revoked = True
-            self.db.commit()
+        self.db.commit()
+        self.db.refresh(refresh_token)
 
-        return token
+        return refresh_token
     
-    def revoke_all_for_user(self, user_id):
+    def revoke_all_for_user(self, user_id: UUID) -> None:
         (
             self.db.query(RefreshToken)
             .filter(RefreshToken.user_id == user_id)
@@ -46,11 +47,20 @@ class RefreshTokenRepository:
         )
 
         self.db.commit()
+    
+    def is_token_valid(self, refresh_token: RefreshToken | None) -> bool:
+        if refresh_token is None:
+            return False
+        if refresh_token.revoked:
+            return False
+        if refresh_token.expires_at <= datetime.now(timezone.utc):
+            return False
+        return True
 
-    def delete_expired_tokens(self):
+    def delete_expired_tokens(self) ->None:
         (
             self.db.query(RefreshToken)
-            .filter(RefreshToken.expires_at < datetime.utcnow())
+            .filter(RefreshToken.expires_at <= datetime.now(timezone.utc))
             .delete()
         )
 

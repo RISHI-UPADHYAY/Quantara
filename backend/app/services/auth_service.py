@@ -8,6 +8,7 @@ from app.models.user import User
 from app.core.security import (
     create_access_token,
     create_refresh_token,
+    decode_refresh_token,
     hash_refresh_token,
     get_refresh_token_expiry,
     hash_password, 
@@ -68,5 +69,63 @@ class AuthService:
         return {
             "access_token": access_token,
             "refresh_token": refresh_token,
+            "token_type": "bearer"
+        }
+    
+    def refresh_tokens(self, refresh_token: str):
+        #Decode the refresh token
+        payload = decode_refresh_token(refresh_token)
+
+        if payload is None:
+            raise ValueError("Invalid refresh token")
+        
+        #Extract claims
+        user_id = payload.get("sub")
+        jti = payload.get("jti")
+
+        if user_id is None or jti is None:
+            raise ValueError("Invalid refresh token")
+        
+        #Hash incoming refresh token
+        refresh_token_hash = hash_refresh_token(refresh_token)
+
+        #Look up token in DB
+        stored_token = (
+            self.refresh_token_repository
+            .get_refresh_token_by_hash(refresh_token_hash)
+        )
+
+        #Validate token
+        if not self.refresh_token_repository.is_token_valid(stored_token):
+            raise ValueError("Refresh token is invalid or expired")
+        
+        #Load user
+        user = self.user_repository.get_user_by_id(user_id)
+
+        if user is None:
+            raise ValueError("User not found")
+        
+        #Generate new tokens
+        new_access_token = create_access_token(data={"sub": str(user.id)})
+
+        new_refresh_token = create_refresh_token(data={"sub": str(user.id), "jti": str(uuid.uuid4())})
+
+        #Hash new refresh token
+        new_refresh_token_hash = hash_refresh_token(new_refresh_token)
+        
+        #Revoke old refresh token
+        self.refresh_token_repository.revoke_token(stored_token)
+
+        #Store new refresh token
+        self.refresh_token_repository.create_refresh_token(
+            user_id=user.id,
+            token_hash=new_refresh_token_hash,
+            expires_at=get_refresh_token_expiry(),
+        )
+
+
+        return {
+            "access_token": new_access_token,
+            "refresh_token": new_refresh_token,
             "token_type": "bearer"
         }

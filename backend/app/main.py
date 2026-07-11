@@ -5,6 +5,7 @@ from app.models.user import User
 from app.api.v1.auth.register import router as register_router
 from app.api.v1.auth.login import router as login_router
 from app.api.v1.users.me import router as users_router
+from app.api.v1.auth.refresh_token import router as refresh_router
 
 
 app = FastAPI(
@@ -28,6 +29,12 @@ app.include_router(
     users_router,
     prefix="/api/v1/users",
     tags=["Users"],
+)
+
+app.include_router(
+    refresh_router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"]
 )
 
 @app.get("/")
