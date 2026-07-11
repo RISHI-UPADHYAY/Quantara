@@ -24,10 +24,13 @@ class AuthService:
         )
     
     def authenticate_user(self, email: str, password: str) -> User:
+
         user = self.user_repository.get_user_by_email(email)
+        
 
         if user is None:
             raise ValueError("Invalid email or password")
+        
         if not verify_password(password, user.password_hash):
             raise ValueError("Invalid user or password")
         

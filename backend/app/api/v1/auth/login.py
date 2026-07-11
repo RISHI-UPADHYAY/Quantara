@@ -10,17 +10,19 @@ from app.dependencies.database import get_db
 
 router = APIRouter()
 
-@router.post(
+@router.post( 
     "/login",
     response_model = Token,
     status_code = status.HTTP_200_OK,
 )
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
+
     user_repository = UserRepository(db)
     auth_service = AuthService(user_repository)
 
     try:
         user = auth_service.authenticate_user(user_credentials.email, user_credentials.password)
+    
     except ValueError:
         raise HTTPException(status_code = status.HTTP_401_UNAUTHORIZED, detail=  "Invalid email or password")
 
