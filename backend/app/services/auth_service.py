@@ -72,6 +72,29 @@ class AuthService:
             "token_type": "bearer"
         }
     
+    def logout(self, refresh_token: str):
+        payload = decode_refresh_token(refresh_token)
+
+        if payload is None:
+            raise ValueError("Invalid refresh token")
+        
+        token_hash = hash_refresh_token(refresh_token)
+
+        stored_token = (
+            self.refresh_token_repository
+            .get_refresh_token_by_hash(token_hash)
+        )
+
+        if stored_token is None:
+            raise ValueError("Refresh token not found")
+        
+        if stored_token.revoked:
+            raise ValueError("Refresh token already revoked")
+
+        self.refresh_token_repository.revoke_token(stored_token)
+
+        return {"message": "Logged out successfully"} 
+    
     def refresh_tokens(self, refresh_token: str):
         #Decode the refresh token
         payload = decode_refresh_token(refresh_token)
