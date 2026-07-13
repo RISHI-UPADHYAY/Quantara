@@ -93,7 +93,12 @@ class AuthService:
 
         self.refresh_token_repository.revoke_token(stored_token)
 
-        return {"message": "Logged out successfully"} 
+        return {"message": "Logged out successfully"}
+
+    def logout_all(self, user):
+        self.refresh_token_repository.revoke_all_for_user(user.id)
+
+        return {"message": "Logged out from all devices successfully"} 
     
     def refresh_tokens(self, refresh_token: str):
         #Decode the refresh token

@@ -7,6 +7,7 @@ from app.api.v1.auth.login import router as login_router
 from app.api.v1.users.me import router as users_router
 from app.api.v1.auth.refresh_token import router as refresh_router
 from app.api.v1.auth.logout import router as logout_router
+from app.api.v1.auth.logout_all import router as logout_all_router
 
 
 app = FastAPI(
@@ -28,7 +29,13 @@ app.include_router(
 
 app.include_router(
     logout_router,
-    prefix="/api/v1/logout",
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+)
+
+app.include_router(
+    logout_all_router,
+    prefix="/api/v1/auth",
     tags=["Authentication"],
 )
 
