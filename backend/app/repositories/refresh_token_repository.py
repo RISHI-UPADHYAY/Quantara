@@ -65,3 +65,21 @@ class RefreshTokenRepository:
         )
 
         self.db.commit()
+
+    def get_active_sessions(self, user_id):
+        return (
+            self.db.query(RefreshToken)
+            .filter(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked == False
+            )
+            .order_by(RefreshToken.created_at.desc())
+            .all()
+        )
+    
+    def get_by_id(self, session_id):
+        return (
+            self.db.query(RefreshToken)
+            .filter(RefreshToken.id == session_id)
+            .first()
+        )

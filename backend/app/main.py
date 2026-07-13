@@ -8,6 +8,8 @@ from app.api.v1.users.me import router as users_router
 from app.api.v1.auth.refresh_token import router as refresh_router
 from app.api.v1.auth.logout import router as logout_router
 from app.api.v1.auth.logout_all import router as logout_all_router
+from app.api.v1.auth.sessions import router as sessions_router
+from app.api.v1.auth.revoke_session import router as revoke_session_router
 
 
 app = FastAPI(
@@ -47,6 +49,18 @@ app.include_router(
 
 app.include_router(
     refresh_router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"]
+)
+
+app.include_router(
+    sessions_router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"]
+)
+
+app.include_router(
+    revoke_session_router,
     prefix="/api/v1/auth",
     tags=["Authentication"]
 )

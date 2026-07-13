@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 import uuid
+from uuid import UUID 
 
 from app.repositories.user_repository import UserRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
@@ -157,3 +158,23 @@ class AuthService:
             "refresh_token": new_refresh_token,
             "token_type": "bearer"
         }
+    
+    def get_active_sessions(self, user):
+        sessions = self.refresh_token_repository.get_active_sessions(user.id)
+
+        return {"sessions": sessions}
+    
+    def revoke_session(self, user: User, session_id: uuid):
+        session = self.refresh_token_repository.get_by_id(session_id)
+
+        if session is None:
+            raise ValueError("Session not found")
+        
+        if session.user_id != user.id:
+            raise ValueError("You do not have permission to revoke this session")
+        
+        if session.revoked:
+            raise ValueError("Session already revoked")
+        
+        self.refresh_token_repository.revoke_token(session)
+        return {"message": "Session revoked successfully"}
