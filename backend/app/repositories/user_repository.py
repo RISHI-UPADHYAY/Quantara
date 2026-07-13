@@ -37,3 +37,11 @@ class UserRepository:
             .filter(User.id == user_id)
             .first()
         )
+    
+    def update_password(self, user, password_hash: str):
+        user.password_hash = password_hash
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user

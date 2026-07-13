@@ -178,3 +178,18 @@ class AuthService:
         
         self.refresh_token_repository.revoke_token(session)
         return {"message": "Session revoked successfully"}
+    
+    def change_password(self, user, current_password: str, new_password: str):
+        if not verify_password(current_password, user.password_hash):
+            raise ValueError("Current password is incorrect")
+        
+        if verify_password(new_password, user.password_hash):
+            raise ValueError("New password must be different from the current password")
+        
+        new_password_hash = hash_password(new_password)
+
+        self.user_repository.update_password(user, new_password_hash)
+
+        self.refresh_token_repository.revoke_all_for_user(user.id)
+
+        return {"message": "Password changed successfully. Please login again."}
