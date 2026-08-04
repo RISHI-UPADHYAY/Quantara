@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import String
+from sqlalchemy import String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,3 +31,13 @@ class User(Base):
     )
 
     password_hash:Mapped[str] = mapped_column(String(255))
+
+    reset_password_token: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    reset_password_expire: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

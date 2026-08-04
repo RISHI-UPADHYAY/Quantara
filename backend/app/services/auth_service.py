@@ -1,11 +1,13 @@
 from sqlalchemy.orm import Session
 import uuid
+from datetime import datetime, timezone
 from uuid import UUID 
 
 from app.repositories.user_repository import UserRepository
 from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.schemas.user import UserCreate
 from app.models.user import User
+from app.services.email_service import EmailService
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -14,6 +16,11 @@ from app.core.security import (
     get_refresh_token_expiry,
     hash_password, 
     verify_password
+)
+from app.core.security import (
+    generate_password_reset_token,
+    hash_password_reset_token,
+    get_password_reset_expiry
 )
 
 class AuthService:
@@ -193,3 +200,52 @@ class AuthService:
         self.refresh_token_repository.revoke_all_for_user(user.id)
 
         return {"message": "Password changed successfully. Please login again."}
+    
+    def forgot_password(self, email: set):
+        user = self.user_repository.get_user_by_email(email)
+
+        if user is None:
+            return
+        
+        reset_token = generate_password_reset_token()
+
+        reset_token_hash = hash_password_reset_token(reset_token)
+
+        self.user_repository.save_reset_token(
+            user=user,
+            token_hash=reset_token_hash,
+            expires_at=get_password_reset_expiry()
+        )
+
+        EmailService().send_password_reset_email(
+            email=user.email,
+            reset_token=reset_token
+        )
+
+    def reset_password(self, token: str, new_password: str):
+        #Hash incoming token
+        token_hash = hash_password_reset_token(token)
+
+        #Find User
+        user = self.user_repository.get_user_by_reset_token(token_hash)
+
+        if user is None:
+            raise ValueError("Invalid reset token")
+
+        #Check expiry
+        if(user.reset_password_expire is None or user.reset_password_expire < datetime.now(timezone.utc)):
+            raise ValueError("Reset token has expired")
+
+        #Update Password
+        user.password_hash = hash_password(new_password)
+
+        #Remove reset token
+        self.user_repository.clear_reset_token(user)
+
+        #Revoke every login session
+        self.refresh_token_repository.revoke_all_for_user(user.id)
+
+        self.user_repository.db.commit()
+        self.user_repository.db.refresh(user)
+
+        return {"message": "Password has been reset successfully"}

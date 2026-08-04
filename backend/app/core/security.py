@@ -1,5 +1,6 @@
 from passlib.context import CryptContext
 import hashlib
+import secrets
 
 from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
@@ -76,3 +77,12 @@ def hash_refresh_token(token: str) -> str:
 
 def get_refresh_token_expiry():
     return datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+def generate_password_reset_token() -> str:
+    return secrets.token_urlsafe(32)
+
+def hash_password_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def get_password_reset_expiry():
+    return datetime.now(timezone.utc) + timedelta(minutes=15)

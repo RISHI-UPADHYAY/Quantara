@@ -45,3 +45,28 @@ class UserRepository:
         self.db.refresh(user)
 
         return user
+    
+    def save_reset_token(self, user: User, token_hash: str, expires_at):
+        user.reset_password_token = token_hash
+        user.reset_password_expire = expires_at
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
+    
+    def get_user_by_reset_token(self, token_hash: str):
+        return (
+            self.db.query(User)
+            .filter(User.reset_password_token == token_hash)
+            .first()
+        )
+    
+    def clear_reset_token(self, user: User):
+        user.reset_password_token = None
+        user.reset_password_expire = None
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
