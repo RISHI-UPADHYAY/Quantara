@@ -13,6 +13,7 @@ from app.api.v1.auth.revoke_session import router as revoke_session_router
 from app.api.v1.auth.change_password import router as change_password_router
 from app.api.v1.auth.forgot_password import router as forgot_password_router
 from app.api.v1.auth.reset_password import router as reset_password_router
+from app.api.v1.auth.verify_email import router as verify_email_router
 
 app = FastAPI(
     title = "Quantara API",
@@ -81,6 +82,12 @@ app.include_router(
 
 app.include_router(
     reset_password_router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"],
+)
+
+app.include_router(
+    verify_email_router,
     prefix="/api/v1/auth",
     tags=["Authentication"],
 )

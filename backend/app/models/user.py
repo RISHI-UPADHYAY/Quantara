@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, DateTime
+from sqlalchemy import String, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +38,22 @@ class User(Base):
     )
 
     reset_password_expire: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    email_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    email_verification_token: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+    )
+
+    email_verification_expire: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )

@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from uuid import UUID
+from datetime import datetime, timezone
 
 from app.models.user import User
 
@@ -65,6 +66,33 @@ class UserRepository:
     def clear_reset_token(self, user: User):
         user.reset_password_token = None
         user.reset_password_expire = None
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
+
+    def set_email_verification(self, user, token_hash: str, expires_at: datetime):
+        user.email_verification_token = token_hash
+        user.email_verification_expire = expires_at
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
+
+    def get_user_by_email_verification_token(self, token: str):
+
+        return (
+            self.db.query(User)
+            .filter(User.email_verification_token == token)
+            .first()
+        )
+
+    def verify_email(self, user: User) -> User:
+        user.email_verified = True
+        user.email_verification_token = None
+        user.email_verification_expire=  None
 
         self.db.commit()
         self.db.refresh(user)

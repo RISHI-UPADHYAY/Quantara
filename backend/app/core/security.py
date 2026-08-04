@@ -86,3 +86,12 @@ def hash_password_reset_token(token: str) -> str:
 
 def get_password_reset_expiry():
     return datetime.now(timezone.utc) + timedelta(minutes=15)
+
+def generate_email_verification_token() -> str:
+    return secrets.token_urlsafe(32)
+
+def hash_email_verification_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+def get_email_verification_expiry() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(hours=24)

@@ -20,7 +20,10 @@ from app.core.security import (
 from app.core.security import (
     generate_password_reset_token,
     hash_password_reset_token,
-    get_password_reset_expiry
+    get_password_reset_expiry,
+    generate_email_verification_token,
+    hash_email_verification_token,
+    get_email_verification_expiry,
 )
 
 class AuthService:
@@ -36,11 +39,27 @@ class AuthService:
 
         password_hash = hash_password(user_data.password)
 
-        return self.user_repository.create_user(
+        user = self.user_repository.create_user(
             name=user_data.name,
             email=user_data.email,
             password_hash=password_hash
         )
+
+        verification_token = generate_email_verification_token()
+
+        verification_hash = hash_email_verification_token(verification_token)
+
+        verification_expiry = get_email_verification_expiry()
+
+        self.user_repository.set_email_verification(
+            user=user,
+            token_hash=verification_hash,
+            expires_at=verification_expiry,
+        )
+
+        print("Verification Token: ", verification_token)
+
+        return user
     
     def authenticate_user(self, email: str, password: str) -> User:
 
@@ -249,3 +268,30 @@ class AuthService:
         self.user_repository.db.refresh(user)
 
         return {"message": "Password has been reset successfully"}
+
+    def verify_email(self, token: str):
+        #Hash the incoming token
+        token_hash = hash_email_verification_token(token)
+
+        #Find the user by hashed token
+        user = self.user_repository.get_user_by_email_verification_token(token_hash)
+
+        if user is None:
+            raise ValueError("Invalid verification token")
+
+        #Already verified
+        if user.email_verified:
+            raise ValueError("Email is already verified")
+
+        #Token missing expiry
+        if user.email_verification_expire is None:
+            raise ValueError("Invalid verification token")
+
+        #Token expired
+        if user.email_verification_expire <= datetime.now(timezone.utc):
+            raise ValueError("Verification token has expired")
+
+        #Verify email
+        verified_user = self.user_repository.verify_email(user)
+
+        return verified_user
