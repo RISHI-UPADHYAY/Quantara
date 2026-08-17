@@ -48,6 +48,11 @@ class User(Base):
         nullable=False,
     )
 
+    is_active: Mapped[bool] = mapped_column(
+        default=True,
+        nullable=False,
+    )
+
     email_verification_token: Mapped[str | None] = mapped_column(
         String(64),
         nullable=True,
@@ -56,4 +61,10 @@ class User(Base):
     email_verification_expire: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+
+    role: Mapped[str] = mapped_column(
+        String(20),
+        default="user",
+        nullable=False,
     )

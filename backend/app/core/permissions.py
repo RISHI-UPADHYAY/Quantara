@@ -1,0 +1,5 @@
+ROLE_USER = "user"
+ROLE_ANALYST = "analyst"
+ROLE_RECRUITER = "recruiter"
+ROLE_ADMIN = "admin"
+ROLE_SUPER_ADMIN = "super_admin"

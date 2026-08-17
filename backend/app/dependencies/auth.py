@@ -8,6 +8,7 @@ from app.models.user import User
 from app.dependencies.database import get_db
 from app.core.security import decode_access_token
 from app.repositories.user_repository import UserRepository
+from app.core.permissions import ROLE_ADMIN
 
 security = HTTPBearer()
 
@@ -38,3 +39,24 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         raise HTTPException(status_code = status.HTTP_401_UNAUTHORIZED, detail = "User not found")
     
     return user
+
+
+def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is inactive",
+        )
+
+    return current_user
+
+def get_current_admin_user(current_user: User = Depends(get_current_active_user)) -> User:
+
+    if current_user.role != ROLE_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+    return current_user

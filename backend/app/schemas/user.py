@@ -21,3 +21,13 @@ class Token(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str
+
+class UserAdminResponse(BaseModel):
+    id: UUID
+    name: str
+    email: EmailStr
+    email_verified: bool
+    is_active: bool
+    role: str
+
+    model_config = ConfigDict(from_attributes=True)
