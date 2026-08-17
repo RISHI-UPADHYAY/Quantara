@@ -101,3 +101,11 @@ class UserRepository:
         self.db.refresh(user)
 
         return user
+
+    def update_user_role(self, user: User, role: str) -> User:
+        user.role = role
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
