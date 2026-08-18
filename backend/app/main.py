@@ -16,6 +16,7 @@ from app.api.v1.auth.reset_password import router as reset_password_router
 from app.api.v1.auth.verify_email import router as verify_email_router
 from app.api.v1.users.list import router as users_list_router
 from app.api.v1.users.update_role import router as update_role_router
+from app.api.v1.organizations.create import router as organization_create_router
 
 app = FastAPI(
     title = "Quantara API",
@@ -104,6 +105,12 @@ app.include_router(
     verify_email_router,
     prefix="/api/v1/auth",
     tags=["Authentication"],
+)
+
+app.include_router(
+    organization_create_router,
+    prefix="/api/v1/organizations",
+    tags=["Organizations"],
 )
 
 @app.get("/")

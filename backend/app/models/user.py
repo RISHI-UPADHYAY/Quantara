@@ -16,6 +16,12 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
+    organization_memberships: Mapped[list["OrganizationMember"]] = relationship(
+        "OrganizationMember",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,

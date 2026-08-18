@@ -10,6 +10,12 @@ from app.database.session import Base
 class Organization(Base):
     __tablename__ = "organizations"
 
+    memberships: Mapped[list["OrganizationMember"]] = relationship(
+        "OrganizationMember",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
