@@ -45,3 +45,16 @@ class OrganizationRepository:
         self.db.refresh(organization)
 
         return organization
+
+    def get_user_organizations(self, user_id: UUID) -> list[Organization]:
+        return (
+            self.db.query(Organization)
+            .join(
+                OrganizationMember,
+                OrganizationMember.organization_id == Organization.id,
+            )
+            .filter(
+                OrganizationMember.user_id == user_id
+            )
+            .all()
+        )
