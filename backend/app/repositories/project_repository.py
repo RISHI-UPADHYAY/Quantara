@@ -41,3 +41,43 @@ class ProjectRepository:
         self.db.refresh(project)
 
         return project
+
+    def get_by_organization(self, organization_id: UUID) -> list[Project]:
+
+        return (
+            self.db.query(Project)
+            .filter(
+                Project.organization_id == organization_id
+            )
+            .order_by(Project.created_at.desc())
+            .all()
+        )
+
+    def get_by_id_in_organization(self, project_id: UUID, organization_id: UUID) -> Project | None:
+
+        return (
+            self.db.query(Project)
+            .filter(
+                Project.id == project_id,
+                Project.organization_id == organization_id,
+            )
+            .first()
+        )
+
+    def update(self, project: Project, name: str | None, description: str | None) -> Project:
+
+        if name is not None:
+            project.name = name
+
+        if description is not None:
+            project.description = description
+
+        self.db.commit()
+        self.db.refresh(project)
+
+        return project
+
+    def delete(self, project: Project) -> None:
+
+        self.db.delete(project)
+        self.db.commit()
