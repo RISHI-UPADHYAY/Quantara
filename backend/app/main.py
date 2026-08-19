@@ -20,6 +20,7 @@ from app.api.v1.organizations.create import router as organization_create_router
 from app.api.v1.organizations.list import router as organization_list_router
 from app.api.v1.organizations.projects import router as projects_router
 from app.api.v1.organizations.datasets import router as datasets_router
+from app.api.v1.organizations.dataset_versions import router as dataset_versions_router
 
 app = FastAPI(
     title = "Quantara API",
@@ -132,6 +133,12 @@ app.include_router(
     datasets_router,
     prefix="/api/v1/organizations",
     tags=["Datasets"],
+)
+
+app.include_router(
+    dataset_versions_router,
+    prefix="/api/v1/organizations/{organization_id}/projects/{project_id}/datasets",
+    tags=["Dataset Versions"],
 )
 
 @app.get("/")
