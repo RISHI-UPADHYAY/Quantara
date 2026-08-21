@@ -99,7 +99,7 @@ def get_dataset(organization_id: UUID, project_id: UUID, dataset_id: UUID, membe
 
 
 @router.patch(
-    "{organization_id}/projects/{project_id}/datasets/{dataset_id}/archive",
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/archive",
     response_model=DatasetResponse,
 )
 def archive_dataset(organization_id: UUID, project_id: UUID, dataset_id: UUID, membership: OrganizationMember = Depends(require_organization_role(ROLE_ADMIN)), db: Session = Depends(get_db)):
