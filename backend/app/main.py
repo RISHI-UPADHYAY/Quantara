@@ -14,6 +14,13 @@ from app.api.v1.auth.change_password import router as change_password_router
 from app.api.v1.auth.forgot_password import router as forgot_password_router
 from app.api.v1.auth.reset_password import router as reset_password_router
 from app.api.v1.auth.verify_email import router as verify_email_router
+from app.api.v1.users.list import router as users_list_router
+from app.api.v1.users.update_role import router as update_role_router
+from app.api.v1.organizations.create import router as organization_create_router
+from app.api.v1.organizations.list import router as organization_list_router
+from app.api.v1.organizations.projects import router as projects_router
+from app.api.v1.organizations.datasets import router as datasets_router
+from app.api.v1.organizations.dataset_versions import router as dataset_versions_router
 
 app = FastAPI(
     title = "Quantara API",
@@ -45,7 +52,19 @@ app.include_router(
 )
 
 app.include_router(
+    users_list_router,
+    prefix="/api/v1/users",
+    tags=["Users"],
+)
+
+app.include_router(
     users_router,
+    prefix="/api/v1/users",
+    tags=["Users"],
+)
+
+app.include_router(
+    update_role_router,
     prefix="/api/v1/users",
     tags=["Users"],
 )
@@ -90,6 +109,36 @@ app.include_router(
     verify_email_router,
     prefix="/api/v1/auth",
     tags=["Authentication"],
+)
+
+app.include_router(
+    organization_create_router,
+    prefix="/api/v1/organizations",
+    tags=["Organizations"],
+)
+
+app.include_router(
+    organization_list_router,
+    prefix="/api/v1/organizations",
+    tags=["Organizations"],
+)
+
+app.include_router(
+    projects_router,
+    prefix="/api/v1/organizations",
+    tags=["Projects"],
+)
+
+app.include_router(
+    datasets_router,
+    prefix="/api/v1/organizations",
+    tags=["Datasets"],
+)
+
+app.include_router(
+    dataset_versions_router,
+    prefix="/api/v1/organizations/{organization_id}/projects/{project_id}/datasets",
+    tags=["Dataset Versions"],
 )
 
 @app.get("/")

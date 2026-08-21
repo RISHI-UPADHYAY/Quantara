@@ -38,6 +38,9 @@ class UserRepository:
             .filter(User.id == user_id)
             .first()
         )
+
+    def get_all_users(self) -> list[User]:
+        return self.db.query(User).all()
     
     def update_password(self, user, password_hash: str):
         user.password_hash = password_hash
@@ -93,6 +96,14 @@ class UserRepository:
         user.email_verified = True
         user.email_verification_token = None
         user.email_verification_expire=  None
+
+        self.db.commit()
+        self.db.refresh(user)
+
+        return user
+
+    def update_user_role(self, user: User, role: str) -> User:
+        user.role = role
 
         self.db.commit()
         self.db.refresh(user)
