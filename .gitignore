@@ -15,6 +15,7 @@ frontend/.env.*
 backend/venv/
 backend/.env
 backend/.env.*
+backend/storage/
 
 backend/**/__pycache__/
 *.py[cod]

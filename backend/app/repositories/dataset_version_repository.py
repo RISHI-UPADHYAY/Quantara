@@ -69,3 +69,15 @@ class DatasetVersionRepository:
             .order_by(DatasetVersion.version.desc())
             .first()
         )
+
+
+    def get_by_id_for_dataset(self, dataset_version_id: uuid.UUID, dataset_id: uuid.UUID) -> DatasetVersion | None:
+
+        return (
+            self.db.query(DatasetVersion)
+            .filter(
+                DatasetVersion.id == dataset_version_id,
+                DatasetVersion.dataset_id == dataset_id,
+            )
+            .first()
+        )
