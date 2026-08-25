@@ -14,8 +14,6 @@ class MarketDataQualityAnalyzer:
             errors="coerce",
         ).dropna()
 
-        timestamps = timestamps.sort_values()
-
         if len(timestamps) < 2:
             return {
                 "observed_frequency_seconds": None,
@@ -24,9 +22,31 @@ class MarketDataQualityAnalyzer:
                 "gaps": [],
             }
 
-        differences = timestamps.diff().dropna()
+        timestamps = timestamps.sort_values()
 
-        median_interval = differences.median()
+        intervals = timestamps.diff().dropna()
+
+        interval_seconds = intervals.dt.total_seconds()
+
+        if interval_seconds.empty:
+            return {
+                "oberserved_frequency_seconds": None,
+                "median_interval_seconds": None,
+                "gap_count": 0,
+                "gaps": [],
+            }
+
+        #The most frequently occuring interval is a better estimate of the expected
+        #market-data frequency than the median when gaps are present.
+        interval_counts = interval_seconds.value_counts()
+
+        expected_frequency = float(
+            interval_counts.index[0]
+        )
+
+        median_interval = float(
+            interval_seconds.median()
+        )
 
         gaps = []
 
@@ -35,11 +55,11 @@ class MarketDataQualityAnalyzer:
             previous_timestamp = timestamps.iloc[index - 1]
             current_timestamp = timestamps.iloc[index]
 
-            difference = (
+            gap_seconds = (
                 current_timestamp - previous_timestamp
-            )
+            ).total_seconds()
 
-            if difference > median_interval * 1.5:
+            if gap_seconds > expected_frequency:
 
                 gaps.append(
                     {
@@ -50,17 +70,17 @@ class MarketDataQualityAnalyzer:
                             current_timestamp.isoformat()
                         ),
                         "gap_seconds": int(
-                            difference.total_seconds()
+                            gap_seconds
                         ),
                     }
                 )
 
         return {
             "observed_frequency_seconds": int(
-                median_interval.total_seconds()
+                expected_frequency
             ),
             "median_interval_seconds": int(
-                median_interval.total_seconds()
+                median_interval
             ),
             "gap_count": len(gaps),
             "gaps": gaps,

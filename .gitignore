@@ -32,7 +32,6 @@ dist/
 .coverage
 .coverage.*
 htmlcov/
-test_profiler.py
 
 # Type checker / Linter
 .mypy_cache/
