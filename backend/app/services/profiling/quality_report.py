@@ -130,7 +130,7 @@ class DataQualityReportBuilder:
                 "status": "pass",
                 "severity": "info",
                 "score": 100,
-                "message": "Timestmap sequence is valid.",
+                "message": "Timestamp sequence is valid.",
             }
 
         return {

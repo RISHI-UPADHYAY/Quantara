@@ -5,6 +5,7 @@ from app.services.profiling.csv_profiler import CSVProfiler
 from app.services.profiling.financial_profiler import FinancialDataProfiler
 from app.services.profiling.quality_report import DataQualityReportBuilder
 from app.services.profiling.recommendations import DataQualityRecommendationEngine
+from app.services.profiling.research_readiness import ResearchReadinessEngine
 
 
 class DataProfilingService:
@@ -14,6 +15,7 @@ class DataProfilingService:
         self.financial_profiler = FinancialDataProfiler()
         self.quality_report_builder = DataQualityReportBuilder()
         self.recommendation_engine = DataQualityRecommendationEngine()
+        self.research_readiness_engine = ResearchReadinessEngine()
 
 
     def profile(self, file_path: Path) -> dict[str, Any]:
@@ -58,10 +60,18 @@ class DataProfilingService:
             )
         )
 
+        research_radiness = (
+            self.research_readiness_engine.evaluate(
+                profile=profile,
+                quality_report=quality,
+            )
+        )
+
         return {
             "file": profile["file"],
             "structure": structure,
             "financial": financial,
             "quality": quality,
             "recommendations": recommendations,
+            "research_readiness": research_radiness,
         }
