@@ -16,6 +16,7 @@ from app.schemas.analysis import (
     AnalysisRequest,
     AnalysisResponse,
     VolatilityAnalysisRequest,
+    BetaAnalysisRequest,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -24,6 +25,7 @@ from app.services.analysis.covariance_analyzer import CovarianceAnalyzer
 from app.services.analysis.drawdown_analyzer import DrawdownAnalyzer
 from app.services.analysis.volume_analyzer import VolumeAnalyzer
 from app.services.analysis.price_range_analyzer import PriceRangeAnalyzer
+from app.services.analysis.beta_analyzer import BetaAnalyzer
 
 
 router = APIRouter()
@@ -128,6 +130,7 @@ def _validate_dataset(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/returns",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_returns(
     organization_id: UUID,
@@ -174,6 +177,7 @@ def analyze_returns(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/volatility",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_volatility(
     organization_id: UUID,
@@ -225,6 +229,7 @@ def analyze_volatility(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/correlation",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_correlation(
     organization_id: UUID,
@@ -271,6 +276,7 @@ def analyze_correlation(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/covariance",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_covariance(
     organization_id: UUID,
@@ -318,6 +324,7 @@ def analyze_covariance(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/drawdown",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_drawdown(
     organization_id: UUID,
@@ -365,6 +372,7 @@ def analyze_drawdown(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/volume",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_volume(
     organization_id: UUID,
@@ -412,6 +420,7 @@ def analyze_volume(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/price-range",
     response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
 )
 def analyze_price_range(
     organization_id: UUID,
@@ -449,6 +458,58 @@ def analyze_price_range(
         }
 
     except (ValueError, TypeError) as exc: 
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+##Beta Analyzer
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/beta",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_beta(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: BetaAnalysisRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Analyze asset beta relative to a benchmark.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    try:
+        result = BetaAnalyzer().analyze(
+            dataframe=dataframe,
+            asset_symbol=data.asset_symbol,
+            benchmark_symbol=data.benchmark_symbol,
+        )
+
+        return {
+            "result": result,
+        }
+
+    except (ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

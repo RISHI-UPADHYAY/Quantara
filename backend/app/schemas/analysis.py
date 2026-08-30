@@ -21,3 +21,9 @@ class AnalysisResponse(BaseModel):
     }
 
     result: dict[str, Any]
+
+
+class BetaAnalysisRequest(BaseModel):
+    file_path: str
+    asset_symbol: str
+    benchmark_symbol: str
