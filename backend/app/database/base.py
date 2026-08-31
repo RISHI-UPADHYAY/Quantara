@@ -11,3 +11,5 @@ from app.models.dataset import Dataset
 from app.models.dataset_version import DatasetVersion
 
 from app.models.ingestion import Ingestion
+
+from app.models.analysis_run import AnalysisRun

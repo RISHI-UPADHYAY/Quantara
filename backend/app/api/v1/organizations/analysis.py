@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.core.permissions import ROLE_ADMIN, ROLE_ANALYST
 from app.dependencies.database import get_db
 from app.dependencies.organization import require_organization_role
+from app.repositories.analysis_run_repository import AnalysisRunRepository
+from app.repositories.dataset_version_repository import DatasetVersionRepository
 from app.models.organization_member import OrganizationMember
 from app.repositories.dataset_repository import DatasetRepository
 from app.schemas.analysis import (
@@ -17,6 +19,8 @@ from app.schemas.analysis import (
     AnalysisResponse,
     VolatilityAnalysisRequest,
     BetaAnalysisRequest,
+    AnalysisRunRequest,
+    AnalysisRunResponse,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -26,6 +30,7 @@ from app.services.analysis.drawdown_analyzer import DrawdownAnalyzer
 from app.services.analysis.volume_analyzer import VolumeAnalyzer
 from app.services.analysis.price_range_analyzer import PriceRangeAnalyzer
 from app.services.analysis.beta_analyzer import BetaAnalyzer
+from app.services.analysis.analysis_service import AnalysisService
 
 
 router = APIRouter()
@@ -508,6 +513,84 @@ def analyze_beta(
         return {
             "result": result,
         }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+##Analysis runs
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs",
+    response_model=AnalysisRunResponse,
+    status_code=status.HTTP_200_OK,
+)
+def run_analysis(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: AnalysisRunRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """Execute an analysis and persist the analysis run."""
+
+    dataset = _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,   
+    )
+
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset_version = (
+        dataset_version_repository.get_by_id_for_dataset(
+            dataset_version_id=data.dataset_version_id,
+            dataset_id=dataset.id,
+        )
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset version not found",
+        )
+
+    if not dataset_version.storage_uri:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dataset version has no storage URI",
+        )
+
+    path = _resolve_file(dataset_version.storage_uri)
+
+    dataframe = _load_dataframe(path)
+
+    repository = AnalysisRunRepository(db)
+
+    service = AnalysisService(repository)
+
+    try:
+        return service.run(
+            dataframe=dataframe,    
+            organization_id=organization_id,
+            project_id=project_id,
+            dataset_id=dataset.id,
+            dataset_version_id=dataset_version.id,
+            analysis_type=data.analysis_type,
+            created_by=membership.user_id,
+            asset_symbol=data.asset_symbol,
+            benchmark_symbol=data.benchmark_symbol,
+        )
 
     except (ValueError, TypeError) as exc:
         raise HTTPException(
