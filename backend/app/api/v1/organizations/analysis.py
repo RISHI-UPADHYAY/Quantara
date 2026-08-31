@@ -22,6 +22,7 @@ from app.schemas.analysis import (
     AnalysisRunRequest,
     AnalysisRunResponse,
     SharpeAnalysisRequest,
+    SortinoAnalysisRequest,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -33,6 +34,7 @@ from app.services.analysis.price_range_analyzer import PriceRangeAnalyzer
 from app.services.analysis.beta_analyzer import BetaAnalyzer
 from app.services.analysis.analysis_service import AnalysisService
 from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
+from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 
 
 router = APIRouter()
@@ -514,6 +516,57 @@ def analyze_beta(
 
         return {
             "result": result,
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    
+##Sortino Analyzer
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/sortino",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_sortino(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: SortinoAnalysisRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """Analyze downside risk and calculate the Sortino ratio."""
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    try: 
+        result = SortinoAnalyzer().analyze(
+            dataframe=dataframe,
+            periods_per_year=data.periods_per_year,
+            risk_free_rate=data.risk_free_rate,
+            target_return=data.target_return,
+            symbol=data.symbol,
+        )
+
+        return {
+            "result": result
         }
 
     except (ValueError, TypeError) as exc:

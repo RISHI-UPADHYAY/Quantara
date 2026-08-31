@@ -17,6 +17,7 @@ from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
 from app.services.analysis.volume_analyzer import VolumeAnalyzer
 from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
+from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 
 
 class AnalysisService:
@@ -52,6 +53,8 @@ class AnalysisService:
         "beta": BetaAnalyzer,
 
         "sharpe": SharpeAnalyzer,
+
+        "sortino": SortinoAnalyzer,
     }
 
 
@@ -195,6 +198,34 @@ class AnalysisService:
                 benchmark_symbol=benchmark_symbol,
             )
 
+        if analysis_type == "sortino":
+
+            periods_per_year = parameters.get(
+                "periods_per_year",
+                SortinoAnalyzer.DEFAULT_PERIODS_PER_YEAR,
+            )
+
+            risk_free_rate = parameters.get(
+                "risk_free_rate",
+                SortinoAnalyzer.DEFAULT_RISK_FREE_RATE,
+            )
+
+            target_return = parameters.get(
+                "target_return"
+            )
+
+            symbol = parameters.get(
+                "symbol"
+            )
+
+            return analyzer.analyze(
+                dataframe,
+                periods_per_year=periods_per_year,
+                risk_free_rate=risk_free_rate,
+                target_return=target_return,
+                symbol=symbol,
+            )
+
         if analysis_type in {
             "return",
             "drawdown",
@@ -266,6 +297,7 @@ class AnalysisService:
                         "covariance",
                         "beta",
                         "sharpe",
+                        "sortino",
                     }
                 )
             )

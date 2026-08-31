@@ -71,3 +71,14 @@ class SharpeAnalysisRequest(BaseModel):
         gt=0,
     )
     risk_free_rate: float = 0.0
+
+
+class SortinoAnalysisRequest(BaseModel):
+    file_path: str
+    periods_per_year: int = Field(
+        default=252,
+        gt=0,
+    )
+    risk_free_rate: float = 0.0
+    target_return: float | None = None
+    symbol: str | None = None
