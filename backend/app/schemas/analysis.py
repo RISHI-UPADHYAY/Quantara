@@ -61,3 +61,13 @@ class AnalysisRunResponse(BaseModel):
     completed_at: datetime | None
     created_by: uuid.UUID
     created_at: datetime
+
+
+class SharpeAnalysisRequest(BaseModel):
+    file_path: str
+    asset_symbol: str | None = None
+    periods_per_year: int = Field(
+        default=252,
+        gt=0,
+    )
+    risk_free_rate: float = 0.0

@@ -21,6 +21,7 @@ from app.schemas.analysis import (
     BetaAnalysisRequest,
     AnalysisRunRequest,
     AnalysisRunResponse,
+    SharpeAnalysisRequest,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -31,6 +32,7 @@ from app.services.analysis.volume_analyzer import VolumeAnalyzer
 from app.services.analysis.price_range_analyzer import PriceRangeAnalyzer
 from app.services.analysis.beta_analyzer import BetaAnalyzer
 from app.services.analysis.analysis_service import AnalysisService
+from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 
 
 router = APIRouter()
@@ -519,6 +521,61 @@ def analyze_beta(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+
+##Sharpe
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/sharpe",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_sharpe(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: SharpeAnalysisRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Analyze risk adjusted performance using the Sharpe ratio.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    try:
+        result = SharpeAnalyzer().analyze(
+            dataframe=dataframe,
+            periods_per_year=data.periods_per_year,
+            risk_free_rate=data.risk_free_rate,
+            symbol=data.asset_symbol,
+        )
+
+        return {
+            "result": result
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    
 
 ##Analysis runs
 

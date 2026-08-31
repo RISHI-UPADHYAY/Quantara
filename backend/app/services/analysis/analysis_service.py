@@ -16,6 +16,7 @@ from app.services.analysis.price_range_analyzer import PriceRangeAnalyzer
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
 from app.services.analysis.volume_analyzer import VolumeAnalyzer
+from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 
 
 class AnalysisService:
@@ -49,6 +50,8 @@ class AnalysisService:
         "covariance": CovarianceAnalyzer,
 
         "beta": BetaAnalyzer,
+
+        "sharpe": SharpeAnalyzer,
     }
 
 
@@ -141,6 +144,29 @@ class AnalysisService:
             return analyzer.analyze(
                 dataframe,
                 periods_per_year=periods_per_year,
+            )
+
+        if analysis_type == "sharpe":
+
+            periods_per_year = parameters.get(
+                "periods_per_year",
+                252,
+            )
+
+            risk_free_rate = parameters.get(
+                "risk_free_rate",
+                0.0,
+            )
+
+            asset_symbol = parameters.get(
+                "asset_symbol"
+            )
+
+            return analyzer.analyze(
+                dataframe,
+                periods_per_year=periods_per_year,
+                risk_free_rate=risk_free_rate,
+                symbol=asset_symbol,
             )
 
         if analysis_type == "beta":
@@ -239,6 +265,7 @@ class AnalysisService:
                         "correlation",
                         "covariance",
                         "beta",
+                        "sharpe",
                     }
                 )
             )
