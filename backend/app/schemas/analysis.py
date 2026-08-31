@@ -31,7 +31,9 @@ class BetaAnalysisRequest(BaseModel):
     benchmark_symbol: str
 
 class AnalysisRunRequest(BaseModel):
+    file_path: str
     dataset_version_id: uuid.UUID
+
     analysis_type: str = Field(
         min_length=1,
         max_length=100,

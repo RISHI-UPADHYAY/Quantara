@@ -525,9 +525,9 @@ def analyze_beta(
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs",
     response_model=AnalysisRunResponse,
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_201_CREATED,
 )
-def run_analysis(
+def create_analysis_run(
     organization_id: UUID,
     project_id: UUID,
     dataset_id: UUID,
@@ -542,7 +542,7 @@ def run_analysis(
 ):
     """Execute an analysis and persist the analysis run."""
 
-    dataset = _validate_dataset(
+    _validate_dataset(
         organization_id,
         project_id,
         dataset_id,
@@ -550,33 +550,10 @@ def run_analysis(
         db,   
     )
 
-    dataset_version_repository = DatasetVersionRepository(db)
-
-    dataset_version = (
-        dataset_version_repository.get_by_id_for_dataset(
-            dataset_version_id=data.dataset_version_id,
-            dataset_id=dataset.id,
-        )
-    )
-
-    if dataset_version is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dataset version not found",
-        )
-
-    if not dataset_version.storage_uri:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Dataset version has no storage URI",
-        )
-
-    path = _resolve_file(dataset_version.storage_uri)
-
+    path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
     repository = AnalysisRunRepository(db)
-
     service = AnalysisService(repository)
 
     try:
@@ -584,8 +561,8 @@ def run_analysis(
             dataframe=dataframe,    
             organization_id=organization_id,
             project_id=project_id,
-            dataset_id=dataset.id,
-            dataset_version_id=dataset_version.id,
+            dataset_id=dataset_id,
+            dataset_version_id=data.dataset_version_id,
             analysis_type=data.analysis_type,
             created_by=membership.user_id,
             asset_symbol=data.asset_symbol,
@@ -597,3 +574,88 @@ def run_analysis(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs",
+    response_model=list[AnalysisRunResponse],
+    status_code=status.HTTP_200_OK,
+)
+def list_analysis_runs(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN, 
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    List persisted analysis runs for a dataset.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    repository = AnalysisRunRepository(db)
+
+    return repository.list_by_dataset(
+        dataset_id=dataset_id,
+    )
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs/{run_id}",
+    response_model=AnalysisRunResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_analysis_run(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    run_id: UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieve a persisted analysis run.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    repository = AnalysisRunRepository(db)
+
+    analysis_run = repository.get_by_id(
+        analysis_run_id=run_id,
+    )
+
+    if analysis_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found",
+        )
+
+    if analysis_run.dataset_id != dataset_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found",
+        )
+
+    return analysis_run
