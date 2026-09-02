@@ -18,6 +18,7 @@ from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
 from app.services.analysis.volume_analyzer import VolumeAnalyzer
 from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
+from app.services.analysis.var_analyzer import VaRAnalyzer
 
 
 class AnalysisService:
@@ -55,6 +56,9 @@ class AnalysisService:
         "sharpe": SharpeAnalyzer,
 
         "sortino": SortinoAnalyzer,
+
+        "var": VaRAnalyzer,
+        "value_at_risk": VaRAnalyzer,
     }
 
 
@@ -226,6 +230,32 @@ class AnalysisService:
                 symbol=symbol,
             )
 
+        if analysis_type in {"var", "value_at_risk"}:
+            confidence_level = parameters.get(
+                "confidence_level",
+                0.95,
+            )
+
+            method = parameters.get(
+                "method",
+                "historical",
+            )
+
+            periods_per_year = parameters.get(
+                "periods_per_year",
+                252,
+            )
+
+            symbol = parameters.get("symbol")
+
+            return analyzer.analyze(
+                dataframe,
+                confidence_level=confidence_level,
+                method=method,
+                periods_per_year=periods_per_year,
+                symbol=symbol,
+            )
+
         if analysis_type in {
             "return",
             "drawdown",
@@ -264,6 +294,7 @@ class AnalysisService:
         aliases = {
             "returns": "return",
             "price-range": "price_range",
+            "value_at_risk": "var",
         }
 
         normalized = aliases.get(

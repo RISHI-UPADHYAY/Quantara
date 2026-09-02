@@ -23,6 +23,7 @@ from app.schemas.analysis import (
     AnalysisRunResponse,
     SharpeAnalysisRequest,
     SortinoAnalysisRequest,
+    VaRAnalysisRequest,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -35,6 +36,7 @@ from app.services.analysis.beta_analyzer import BetaAnalyzer
 from app.services.analysis.analysis_service import AnalysisService
 from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
+from app.services.analysis.var_analyzer import VaRAnalyzer
 
 
 router = APIRouter()
@@ -573,6 +575,60 @@ def analyze_sortino(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        )
+
+##Value at Risk
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/var",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_var(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: VaRAnalysisRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Analyze Value at Risk using historical or prametric methodology.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    try:
+        result = VaRAnalyzer().analyze(
+            dataframe=dataframe,
+            confidence_level=data.confidence_level,
+            method=data.method,
+            periods_per_year=data.periods_per_year,
+            symbol=data.symbol,
+        )
+
+        return {
+            "result": result
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc)
         )
 
 ##Sharpe

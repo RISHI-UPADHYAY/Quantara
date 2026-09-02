@@ -82,3 +82,22 @@ class SortinoAnalysisRequest(BaseModel):
     risk_free_rate: float = 0.0
     target_return: float | None = None
     symbol: str | None = None
+
+
+class VaRAnalysisRequest(BaseModel):
+    file_path: str
+    confidence_level: float = Field(
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+    )
+    method: str = Field(
+        default="historical",
+        min_length=1,
+    )
+    periods_per_year: int = Field(
+        default=252,
+        gt=0,
+    )
+
+    symbol: str | None = None
