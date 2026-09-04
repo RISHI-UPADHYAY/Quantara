@@ -41,6 +41,19 @@ class AnalysisRunRequest(BaseModel):
     asset_symbol: str | None = None
     benchmark_symbol: str | None = None
 
+    confidence_level: float = Field(
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+    )
+
+    periods_per_year: int = Field(
+        default=252,
+        gt=0,
+    )
+
+    symbol: str | None = None
+
 
 class AnalysisRunResponse(BaseModel):
     model_config = {

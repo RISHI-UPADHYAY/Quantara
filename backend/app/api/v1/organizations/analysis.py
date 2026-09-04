@@ -37,6 +37,7 @@ from app.services.analysis.analysis_service import AnalysisService
 from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
+from app.services.analysis.cvar_analyzer import CVaRAnalyzer
 
 
 router = APIRouter()
@@ -631,6 +632,59 @@ def analyze_var(
             detail=str(exc)
         )
 
+#CVar
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/cvar",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_cvar(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: VaRAnalysisRequest,
+    confidence_level: float = 0.95,
+    periods_per_year: int = 252,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    try:
+        result = CVaRAnalyzer().analyze(
+            dataframe,
+            symbol=data.symbol,
+            confidence_level=confidence_level,
+            periods_per_year=periods_per_year,
+        )
+
+        return{
+            "result": result
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+
 ##Sharpe
 
 @router.post(
@@ -733,6 +787,9 @@ def create_analysis_run(
             created_by=membership.user_id,
             asset_symbol=data.asset_symbol,
             benchmark_symbol=data.benchmark_symbol,
+            symbol=data.symbol,
+            confidence_level=data.confidence_level,
+            periods_per_year=data.periods_per_year,
         )
 
     except (ValueError, TypeError) as exc:

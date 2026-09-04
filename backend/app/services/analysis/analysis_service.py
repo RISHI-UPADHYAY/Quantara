@@ -19,6 +19,7 @@ from app.services.analysis.volume_analyzer import VolumeAnalyzer
 from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
+from app.services.analysis.cvar_analyzer import CVaRAnalyzer
 
 
 class AnalysisService:
@@ -59,6 +60,10 @@ class AnalysisService:
 
         "var": VaRAnalyzer,
         "value_at_risk": VaRAnalyzer,
+
+        "cvar": CVaRAnalyzer,
+        "expected_shortfall": CVaRAnalyzer,
+        "expected-shortfall": CVaRAnalyzer,
     }
 
 
@@ -256,6 +261,31 @@ class AnalysisService:
                 symbol=symbol,
             )
 
+        if analysis_type in {"cvar", "expected_shortfall"}:
+            symbol = parameters.get("symbol")
+
+            if not symbol:
+                raise ValueError(
+                    "symbol is required for CVaR analysis."
+                )
+
+            confidence_level = parameters.get(
+                "confidence_level",
+                CVaRAnalyzer.DEFAULT_CONFIDENCE_LEVEL,
+            )
+
+            periods_per_year = parameters.get(
+                "periods_per_year",
+                CVaRAnalyzer.DEFAULT_PERIODS_PER_YEAR,
+            )
+
+            return analyzer.analyze(
+                dataframe,
+                symbol=symbol,
+                confidence_level=confidence_level,
+                periods_per_year=periods_per_year,
+            )
+
         if analysis_type in {
             "return",
             "drawdown",
@@ -295,6 +325,7 @@ class AnalysisService:
             "returns": "return",
             "price-range": "price_range",
             "value_at_risk": "var",
+            "expected-shortfall": "expected_shortfall",
         }
 
         normalized = aliases.get(
