@@ -114,3 +114,28 @@ class VaRAnalysisRequest(BaseModel):
     )
 
     symbol: str | None = None
+
+
+class PortfolioHolding(BaseModel):
+    symbol: str = Field(
+        min_length=1,
+        max_length=50,
+    )
+
+    weight: float = Field(
+        gt=0.0,
+        le=1.0,
+    )
+
+
+class PortfolioRiskAnalysisRequest(BaseModel):
+    file_path: str
+
+    holdings: list[PortfolioHolding] = Field(
+        min_length=1,
+    )
+
+    periods_per_year: int = Field(
+        default=252,
+        gt=0,
+    )

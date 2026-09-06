@@ -24,6 +24,7 @@ from app.schemas.analysis import (
     SharpeAnalysisRequest,
     SortinoAnalysisRequest,
     VaRAnalysisRequest,
+    PortfolioRiskAnalysisRequest,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -38,6 +39,7 @@ from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
 from app.services.analysis.cvar_analyzer import CVaRAnalyzer
+from app.services.analysis.portfolio.portfolio_risk_engine import PortfolioRiskEngine
 
 
 router = APIRouter()
@@ -738,6 +740,70 @@ def analyze_sharpe(
             detail=str(exc),
         )
 
+
+#Portfolio Risk
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/portfolio-risk",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_portfolio_risk(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: PortfolioRiskAnalysisRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Analyze portfolio-level risk using historical market prices and portfolio
+    holdings.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    holdings = pd.DataFrame(
+        [
+            {
+                "symbol": holding.symbol,
+                "weight": holding.weight,
+            }
+            for holding in data.holdings
+        ]
+    )
+
+    try:
+        result = PortfolioRiskEngine(
+            periods_per_year=data.periods_per_year,
+        ).analyze(
+            prices=dataframe,
+            holdings=holdings,
+        )
+
+        return {
+            "result": result,
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
     
 
 ##Analysis runs
