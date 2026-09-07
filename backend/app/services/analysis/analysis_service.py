@@ -21,6 +21,7 @@ from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
 from app.services.analysis.cvar_analyzer import CVaRAnalyzer
 from app.services.analysis.portfolio.portfolio_risk_engine import PortfolioRiskEngine
+from app.services.analysis.portfolio.portfolio_stress_engine import PortfolioStressEngine
 
 
 class AnalysisService:
@@ -65,6 +66,10 @@ class AnalysisService:
         "cvar": CVaRAnalyzer,
         "expected_shortfall": CVaRAnalyzer,
         "expected-shortfall": CVaRAnalyzer,
+
+        "portfolio_risk": PortfolioRiskEngine,
+
+        "portfolio_stress": PortfolioStressEngine,
     }
 
 
@@ -196,6 +201,48 @@ class AnalysisService:
                 prices=dataframe,
                 holdings=holdings_dataframe,
                 confidence_level=confidence_level,
+            )
+
+        if analysis_type == "portfolio_stress":
+            holdings = parameters.get("holdings")
+            shocks = parameters.get("shocks")
+            scenario_name = parameters.get(
+                "scenario_name",
+                "Custom Scenario",
+            )
+
+            if not holdings:
+                raise ValueError(
+                    "holdings are required for portfolio_stress analysis."
+                )
+
+            if not shocks:
+                raise ValueError(
+                    "shocks are required for portfolio_stress analysis."
+                )
+
+            holdings_dataframe = pd.DataFrame(
+                [
+                    {
+                        "symbol": (
+                            holding["symbol"]
+                            if isinstance(holding, dict)
+                            else holding.symbol
+                        ),
+                        "weight": (
+                            holding["weight"]
+                            if isinstance(holding, dict)
+                            else holding.weight
+                        ),
+                    }
+                    for holding in holdings
+                ]
+            )
+
+            return PortfolioStressEngine().analyze(
+                holdings=holdings_dataframe,
+                shocks=shocks,
+                scenario_name=scenario_name,
             )
 
         if analysis_type == "volatility":

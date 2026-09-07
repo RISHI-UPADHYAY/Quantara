@@ -135,3 +135,18 @@ class VaRAnalysisRequest(BaseModel):
     )
 
     symbol: str | None = None
+
+
+class PortfolioStressAnalysisRequest(BaseModel):
+    file_path: str  
+    holdings: list[PortfolioHolding] = Field(
+        min_length=1
+    )
+    shocks: dict[str, Any] = Field(
+        min_length=1
+    )
+    scenario_name: str = Field(
+        default="Customer Scenario",
+        min_length=1,
+        max_length=200,
+    )
