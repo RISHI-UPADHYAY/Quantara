@@ -5,6 +5,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from app.services.analysis.cvar_analyzer import CVaRAnalyzer
+from app.services.analysis.var_analyzer import VaRAnalyzer
+
 from app.services.analysis.portfolio.portfolio_validator import(
     PortfolioValidationError,
     PortfolioValidator,
@@ -29,9 +32,13 @@ class PortfolioRiskEngine:
         periods_per_year: int = 252,    
     ) -> None:
 
-        if periods_per_year <= 0:
+        if(
+            not isinstance(periods_per_year, int)
+            or isinstance(periods_per_year, bool)
+            or periods_per_year <= 0
+        ):
             raise PortfolioValidationError(
-                "periods_per_year must be greater than zero."
+                "periods_per_year must be a positive integer."
             )
 
         self.periods_per_year = periods_per_year
@@ -43,6 +50,7 @@ class PortfolioRiskEngine:
         holdings: pd.DataFrame,
         symbol_column: str = "symbol",
         weight_column: str = "weight",
+        confidence_level: float = 0.95,
     ) -> dict[str, Any]:
         """
         Calculate portfolio-level risk metrics.
@@ -56,6 +64,10 @@ class PortfolioRiskEngine:
                 DataFrame containing:
                     symbol
                     weight
+            
+            confidence_level:
+                Confidence level used for historical VaR/CVaR.
+                Example: 0.95 = 95% confidence
 
         Returns:
             dict:
@@ -67,6 +79,8 @@ class PortfolioRiskEngine:
             symbol_column=symbol_column,
             weight_column=weight_column,
         )
+
+        self._validate_confidence_level(confidence_level)
 
         symbols = (
             holdings[symbol_column]
@@ -94,6 +108,16 @@ class PortfolioRiskEngine:
         covariance_matrix = returns.cov()
 
         portfolio_returns = returns.to_numpy() @ weights
+
+        if len(portfolio_returns) < 2:
+            raise PortfolioValidationError(
+                "At least 2 portfolio return observations are required."
+            )
+
+        if not np.isfinite(portfolio_returns).all():
+            raise PortfolioValidationError(
+                "Portfolio returns contain non-finite values."
+            )
 
         portfolio_mean_return = float(np.mean(portfolio_returns))
 
@@ -126,6 +150,11 @@ class PortfolioRiskEngine:
             risk_contribution=risk_contribution,
         )
 
+        tail_risk = self._calculate_tail_risk(
+            portfolio_returns=portfolio_returns,
+            confidence_level=confidence_level,
+        )
+
         return {
             "portfolio": {
                 "asset_count": len(symbols),
@@ -141,6 +170,7 @@ class PortfolioRiskEngine:
                 "period_volatility": portfolio_volatility,
                 "annualized_volatility": annualized_volatility,
             },
+            "tail_risk": tail_risk,
             "weights": {
                 symbol: float(weight)
                 for symbol, weight in zip(symbols, weights)
@@ -173,6 +203,107 @@ class PortfolioRiskEngine:
         returns = returns.dropna(how="any")
 
         return returns
+
+
+    @staticmethod
+    def _calculate_tail_risk(
+        portfolio_returns: np.ndarray,
+        confidence_level: float,
+    ) -> dict[str, Any]:
+        """
+        Calculate historical portfolio VaR and CVaR.
+
+        The existing VaRAnalyzer and CVaRAnalyzer operate on price data. Here we already
+        have the portfolio return series, so the mathematical calculation is performed
+        directly on that series.
+
+        VaR:
+            Positive loss threshold at the specified confidence.
+        CVaR:
+            Average loss among observations at or beyond VaR.
+        """
+
+        returns =  np.asarray(
+            portfolio_returns,
+            dtype=float,
+        )
+
+        if returns.ndim != 1:
+            raise PortfolioValidationError(
+                "Portfolio returns must be a one-dimensional array."
+            )
+
+        if len(returns) < 2:
+            raise PortfolioValidationError(
+                "At least 2 observations are required for VaR/CVar."
+            )
+
+        if not np.isfinite(returns).all():
+            raise PortfolioValidationError(
+                "Portfolio returns contain non-finite values."
+            )
+
+        tail_probability = 1.0 - confidence_level
+
+        var_quantile = float(
+            np.quantile(
+                returns,
+                tail_probability,
+            )
+        )
+
+        var = max(
+            0.0,
+            -var_quantile,
+        )
+
+        tail_returns = returns[
+            returns <= var_quantile
+        ]
+
+        if len(tail_returns) == 0:
+            raise PortfolioValidationError(
+                "Unable to identify tail observations for CVaR"
+            )
+
+        cvar = max(
+            0.0,
+            -float(np.mean(tail_returns)),   
+        )
+
+        return {
+            "method": "historical",
+            "confidence_level": confidence_level,
+            "tail_probability": tail_probability,
+            "return_count": int(len(returns)),
+            "tail_return_count": int(len(tail_returns)),
+            "var": float(var),
+            "var_percent": float(var * 100.0),
+            "cvar": float(cvar),
+            "cvar_percent": float(cvar * 100.0),
+        }
+
+
+    @staticmethod
+    def _validate_confidence_level(
+        confidence_level: float,
+    ) -> None:
+
+        if not isinstance(
+            confidence_level,
+            (int, float),
+        ) or isinstance(
+            confidence_level,
+            bool,
+        ):
+            raise PortfolioValidationError(
+                "confidence_level must be a number."
+            )
+
+        if not 0.0 < confidence_level < 1.0:
+            raise PortfolioValidationError(
+                "confidence_level must be between 0 and 1."
+            )
 
 
     @staticmethod

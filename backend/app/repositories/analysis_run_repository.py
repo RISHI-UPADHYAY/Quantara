@@ -23,6 +23,7 @@ class AnalysisRunRepository:
         dataset_version_id: uuid.UUID,
         analysis_type: str,
         created_by: uuid.UUID,
+        parameters: dict | None = None,
         row_count: int | None = None,
     ) -> AnalysisRun:
 
@@ -34,6 +35,7 @@ class AnalysisRunRepository:
             analysis_type=analysis_type,
             status="pending",
             created_by=created_by,
+            parameters=parameters or {},
             row_count=row_count,
         )
 

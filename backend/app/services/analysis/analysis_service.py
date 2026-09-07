@@ -20,6 +20,7 @@ from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
 from app.services.analysis.cvar_analyzer import CVaRAnalyzer
+from app.services.analysis.portfolio.portfolio_risk_engine import PortfolioRiskEngine
 
 
 class AnalysisService:
@@ -103,6 +104,7 @@ class AnalysisService:
             dataset_version_id=dataset_version_id,
             analysis_type=normalized_analysis_type,
             created_by=created_by,
+            parameters=parameters,
             row_count=len(dataframe),
         )
 
@@ -111,14 +113,23 @@ class AnalysisService:
                 analysis_run
             )
 
-            analyzer = analyzer_class()
+            if normalized_analysis_type == "portfolio_risk":
+                result = self._execute_analyzer(
+                    analyzer=None,
+                    analysis_type=normalized_analysis_type,
+                    dataframe=dataframe,
+                    parameters=parameters,
+                )
 
-            result = self._execute_analyzer(
-                analyzer=analyzer,
-                analysis_type=normalized_analysis_type,
-                dataframe=dataframe,
-                parameters=parameters,
-            )
+            else:
+                analyzer = analyzer_class()
+                
+                result = self._execute_analyzer(
+                    analyzer=analyzer,
+                    analysis_type=normalized_analysis_type,
+                    dataframe=dataframe,
+                    parameters=parameters,
+                )
 
             self.repository.mark_completed(
                 analysis_run,
@@ -146,6 +157,46 @@ class AnalysisService:
         dataframe: pd.DataFrame,
         parameters: dict[str, Any],
     ) -> dict[str, Any]:
+
+        if analysis_type == "portfolio_risk":
+            holdings = parameters.get("holdings")
+
+            if not holdings:
+                raise ValueError(
+                    "holdings are required for portfolio_risk analysis."
+                )
+
+            periods_per_year = parameters.get(
+                "periods_per_year",
+                252,
+            )
+
+            confidence_level = parameters.get(
+                "confidence_level",
+                0.95,
+            )
+
+            holdings_dataframe = pd.DataFrame(
+                [
+                    {
+                        "symbol": holding["symbol"]
+                        if isinstance(holding, dict)
+                        else holding.symbol,
+                        "weight": holding["weight"]
+                        if isinstance(holding, dict)
+                        else holding.weight,
+                    }
+                    for holding in holdings
+                ]
+            )
+
+            return PortfolioRiskEngine(
+                periods_per_year=periods_per_year,
+            ).analyze(
+                prices=dataframe,
+                holdings=holdings_dataframe,
+                confidence_level=confidence_level,
+            )
 
         if analysis_type == "volatility":
             periods_per_year = parameters.get(
@@ -342,6 +393,9 @@ class AnalysisService:
         analysis_type: str,
     ) -> type:
 
+        if analysis_type == "portfolio_risk":
+            return PortfolioRiskEngine
+
         analyzer_class = cls.ANALYZERS.get(
             analysis_type
         )
@@ -360,6 +414,10 @@ class AnalysisService:
                         "beta",
                         "sharpe",
                         "sortino",
+                        "var",
+                        "cvar",
+                        "expected_shortfall",
+                        "portfolio_risk",
                     }
                 )
             )

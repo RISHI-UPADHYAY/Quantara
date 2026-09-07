@@ -55,17 +55,22 @@ class PortfolioValidator:
             )
 
         if (holdings[weight_column] < 0).any():
-            duplicates = (
-                holdings.loc[
-                    holdings[symbol_column].duplicated(),
-                    symbol_column,
-                ]
-                .astype(str)
-                .tolist()
+            raise PortfolioValidationError(
+                "Portfolio weights cannot be negative."
             )
 
+        duplicates = (
+            holdings.loc[
+                holdings[symbol_column].duplicated(),
+                symbol_column,
+            ]
+            .astype(str)
+            .tolist()
+        )
+
+        if duplicates:
             raise PortfolioValidationError(
-                f"Duplicate portfolio symbols found: {duplicates}"
+                f"Duplcate portfolio symbols found: {duplicates}"
             )
 
         total_weight = float(holdings[weight_column].sum())

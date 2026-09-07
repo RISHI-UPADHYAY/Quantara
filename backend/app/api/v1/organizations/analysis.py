@@ -851,11 +851,7 @@ def create_analysis_run(
             dataset_version_id=data.dataset_version_id,
             analysis_type=data.analysis_type,
             created_by=membership.user_id,
-            asset_symbol=data.asset_symbol,
-            benchmark_symbol=data.benchmark_symbol,
-            symbol=data.symbol,
-            confidence_level=data.confidence_level,
-            periods_per_year=data.periods_per_year,
+            **data.parameters,
         )
 
     except (ValueError, TypeError) as exc:

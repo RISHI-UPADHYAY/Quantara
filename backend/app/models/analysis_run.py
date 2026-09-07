@@ -65,6 +65,12 @@ class AnalysisRun(Base):
         nullable=True,
     )
 
+    parameters: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
     error_message: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,

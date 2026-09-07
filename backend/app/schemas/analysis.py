@@ -5,6 +5,37 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class PortfolioHolding(BaseModel):
+    symbol: str = Field(
+        min_length=1,
+        max_length=50,
+    )
+
+    weight: float = Field(
+        gt=0.0,
+        le=1.0,
+    )
+
+
+class PortfolioRiskAnalysisRequest(BaseModel):
+    file_path: str
+
+    holdings: list[PortfolioHolding] = Field(
+        min_length=1,
+    )
+
+    periods_per_year: int = Field(
+        default=252,
+        gt=0,
+    )
+
+    confidence_level: float = Field(
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+    )
+
+
 class AnalysisRequest(BaseModel):
     file_path: str
 
@@ -38,21 +69,10 @@ class AnalysisRunRequest(BaseModel):
         min_length=1,
         max_length=100,
     )
-    asset_symbol: str | None = None
-    benchmark_symbol: str | None = None
 
-    confidence_level: float = Field(
-        default=0.95,
-        gt=0.0,
-        lt=1.0,
+    parameters: dict[str, Any] = Field(
+        default_factory=dict
     )
-
-    periods_per_year: int = Field(
-        default=252,
-        gt=0,
-    )
-
-    symbol: str | None = None
 
 
 class AnalysisRunResponse(BaseModel):
@@ -66,6 +86,7 @@ class AnalysisRunResponse(BaseModel):
     dataset_id: uuid.UUID
     dataset_version_id: uuid.UUID
     analysis_type: str
+    parameters: dict[str, Any]
     status: str
     result: dict[str, Any] | None   
     error_message: str | None   
@@ -114,28 +135,3 @@ class VaRAnalysisRequest(BaseModel):
     )
 
     symbol: str | None = None
-
-
-class PortfolioHolding(BaseModel):
-    symbol: str = Field(
-        min_length=1,
-        max_length=50,
-    )
-
-    weight: float = Field(
-        gt=0.0,
-        le=1.0,
-    )
-
-
-class PortfolioRiskAnalysisRequest(BaseModel):
-    file_path: str
-
-    holdings: list[PortfolioHolding] = Field(
-        min_length=1,
-    )
-
-    periods_per_year: int = Field(
-        default=252,
-        gt=0,
-    )
