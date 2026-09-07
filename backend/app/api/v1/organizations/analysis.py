@@ -1,6 +1,5 @@
 from pathlib import Path
 from uuid import UUID
-from typing import Any
 
 import pandas as pd
 
@@ -27,6 +26,7 @@ from app.schemas.analysis import (
     VaRAnalysisRequest,
     PortfolioRiskAnalysisRequest,
     PortfolioStressAnalysisRequest,
+    PortfolioNamedScenarioAnalysisRequest,
 )
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -875,7 +875,74 @@ def analyze_portfolio_stress(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    
+
+
+# Portfolio Named Scenario
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/portfolio-stress/scenario",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_portfolio_named_scenario(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: PortfolioNamedScenarioAnalysisRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Analyze a portfolio under a predefined named stress scenario.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    _load_dataframe(path)
+
+    holdings = pd.DataFrame(
+        [
+            {
+                "symbol": holding.symbol,
+                "weight": holding.weight,
+            }
+            for holding in data.holdings
+        ]
+    )
+
+    try:
+        result = PortfolioStressEngine().analyze_scenario(
+            holdings=holdings,
+            scenario_id=data.scenario_id,
+        )
+
+        return {
+            "result": result
+        }
+
+    except PortfolioValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
 ##Analysis runs
 

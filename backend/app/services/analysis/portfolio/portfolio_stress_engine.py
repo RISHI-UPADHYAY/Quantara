@@ -9,6 +9,9 @@ from app.services.analysis.portfolio.portfolio_validator import (
     PortfolioValidationError,
     PortfolioValidator,
 )
+from app.services.analysis.scenario.scenario_resolver import (
+    ScenarioResolver,
+)
 
 
 class PortfolioStressEngine:
@@ -110,6 +113,32 @@ class PortfolioStressEngine:
             "asset_impacts": asset_impacts,
             "stressed_weights": stressed_weights,
         }
+
+    def analyze_scenario(
+        self,
+        holdings: pd.DataFrame,
+        scenario_id: str,
+        symbol_column: str = "symbol",
+        weight_column: str = "weight",
+    ) -> dict[str, Any]:
+        """
+        Analyze a portfolio under a predefined named scenario.
+        """
+
+        scenario = ScenarioResolver.resolve(scenario_id)
+
+        result = self.analyze(
+            holdings=holdings,
+            shocks=dict(scenario.shocks),
+            symbol_column=symbol_column,
+            weight_column=weight_column,
+            scenario_name=scenario.name,
+        )
+
+        result["scenario"]["id"] = scenario_id
+        result["scenario"]["description"] = scenario.description
+
+        return result
 
 
     @staticmethod

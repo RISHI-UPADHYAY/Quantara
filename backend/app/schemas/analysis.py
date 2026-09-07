@@ -150,3 +150,14 @@ class PortfolioStressAnalysisRequest(BaseModel):
         min_length=1,
         max_length=200,
     )
+
+
+class PortfolioNamedScenarioAnalysisRequest(BaseModel):
+    file_path: str
+    holdings: list[PortfolioHolding] = Field(
+        min_length=1
+    )
+    scenario_id: str = Field(
+        min_length=1,
+        max_length=100,
+    )

@@ -118,7 +118,7 @@ class AnalysisService:
                 analysis_run
             )
 
-            if normalized_analysis_type == "portfolio_risk":
+            if normalized_analysis_type in {"portfolio_risk", "portfolio_stress"}:
                 result = self._execute_analyzer(
                     analyzer=None,
                     analysis_type=normalized_analysis_type,
@@ -205,21 +205,12 @@ class AnalysisService:
 
         if analysis_type == "portfolio_stress":
             holdings = parameters.get("holdings")
-            shocks = parameters.get("shocks")
-            scenario_name = parameters.get(
-                "scenario_name",
-                "Custom Scenario",
-            )
 
             if not holdings:
                 raise ValueError(
                     "holdings are required for portfolio_stress analysis."
                 )
-
-            if not shocks:
-                raise ValueError(
-                    "shocks are required for portfolio_stress analysis."
-                )
+            
 
             holdings_dataframe = pd.DataFrame(
                 [
@@ -238,6 +229,25 @@ class AnalysisService:
                     for holding in holdings
                 ]
             )
+
+            scenario_id = parameters.get("scenario_id")
+
+            if scenario_id:
+                return PortfolioStressEngine().analyze_scenario(
+                    holdings=holdings_dataframe,
+                    scenario_id=scenario_id,
+                )
+
+            shocks = parameters.get("shocks")
+            scenario_name = parameters.get(
+                "scenario_name",
+                "Custom Scenario",
+            )
+            
+            if not shocks:
+                raise ValueError(
+                    "Either scenario_id or shocks are required for portfolio_stress analysis."
+                )
 
             return PortfolioStressEngine().analyze(
                 holdings=holdings_dataframe,
@@ -440,8 +450,8 @@ class AnalysisService:
         analysis_type: str,
     ) -> type:
 
-        if analysis_type == "portfolio_risk":
-            return PortfolioRiskEngine
+        if analysis_type in {"portfolio_risk", "portfolio_stress"}:
+            return cls.ANALYZERS[analysis_type]
 
         analyzer_class = cls.ANALYZERS.get(
             analysis_type
@@ -465,6 +475,7 @@ class AnalysisService:
                         "cvar",
                         "expected_shortfall",
                         "portfolio_risk",
+                        "portfolio_stress",
                     }
                 )
             )
