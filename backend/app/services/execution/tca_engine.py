@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import uuid
+import pandas as pd
 from decimal import Decimal
 
 from fastapi import HTTPException, status
 
-from app.models.execution_fill import ExecutionFill
-from app.models.execution_order import ExecutionOrder
+from app.services.execution.benchmark_engine import BenchmarkEngine
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
 
@@ -17,9 +17,13 @@ class TCAEngine:
         self,
         order_repository: ExecutionOrderRepository,
         fill_repository: ExecutionFillRepository,
+        benchmark_engine: BenchmarkEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
+        self.benchmark_engine = benchmark_engine or BenchmarkEngine(
+            order_repository=order_repository
+        )
 
 
     def calculate_execution_statistics(
@@ -28,6 +32,7 @@ class TCAEngine:
         organization_id: uuid.UUID,
         project_id: uuid.UUID,
         order_id: uuid.UUID,
+        market_data: pd.DataFrame | None = None,
     ) -> dict:
 
         order = self.order_repository.get_by_id_in_project(
@@ -106,6 +111,20 @@ class TCAEngine:
             order_quantity - executed_quantity
         )
 
+        arrival_price = None
+        arrival_timestamp = None
+
+        if market_data is not None:
+            arrival_result = self.benchmark_engine.calculate_arrival_price(
+                organization_id=organization_id,
+                project_id=project_id,
+                order_id=order_id,
+                market_data=market_data,
+            )
+
+            arrival_price = arrival_result["arrival_price"]
+            arrival_timestamp = arrival_result["arrival_timestamp"]
+
         return {
             "order_id": str(order.id),
             "symbol": order.symbol,
@@ -122,4 +141,6 @@ class TCAEngine:
             "cost_per_share": float(cost_per_share),
             "net_execution_cost": float(net_execution_cost),
             "is_fully_filled": executed_quantity == order_quantity,
+            "arrival_price": arrival_price,
+            "arrival_timestamp": arrival_timestamp,
         }
