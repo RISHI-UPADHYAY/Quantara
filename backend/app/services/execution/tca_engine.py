@@ -7,6 +7,7 @@ from decimal import Decimal
 from fastapi import HTTPException, status
 
 from app.services.execution.benchmark_engine import BenchmarkEngine
+from app.services.execution.slippage_engine import SlippageEngine   
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
 
@@ -18,12 +19,14 @@ class TCAEngine:
         order_repository: ExecutionOrderRepository,
         fill_repository: ExecutionFillRepository,
         benchmark_engine: BenchmarkEngine | None = None,
+        slippage_engine: SlippageEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
         self.benchmark_engine = benchmark_engine or BenchmarkEngine(
-            order_repository=order_repository
+            order_repository=order_repository,
         )
+        self.slippage_engine = slippage_engine or SlippageEngine()
 
 
     def calculate_execution_statistics(
@@ -54,7 +57,7 @@ class TCAEngine:
         if not fills:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Cannot calculate TCA for an order withn no fills."
+                detail="Cannot calculate TCA for an order with no fills."
             )
 
         order_quantity = Decimal(str(order.quantity))
@@ -94,7 +97,7 @@ class TCAEngine:
         if executed_quantity <= 0:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="Executed quantity must be greater then zero."
+                detail="Executed quantity must be greater than zero."
             )
 
         average_execution_price = (
@@ -125,6 +128,22 @@ class TCAEngine:
             arrival_price = arrival_result["arrival_price"]
             arrival_timestamp = arrival_result["arrival_timestamp"]
 
+        price_slippage = None
+        percentage_slippage = None
+        total_slippage = None
+
+        if arrival_price is not None:
+            slippage_result = self.slippage_engine.calculate_slippage(
+                side=order.side,
+                benchmark_price=arrival_price,
+                execution_price=average_execution_price,
+                executed_quantity=executed_quantity,
+            )
+
+            price_slippage = slippage_result["price_slippage"]
+            percentage_slippage = slippage_result["percentage_slippage"]
+            total_slippage = slippage_result["total_slippage"]
+
         return {
             "order_id": str(order.id),
             "symbol": order.symbol,
@@ -143,4 +162,7 @@ class TCAEngine:
             "is_fully_filled": executed_quantity == order_quantity,
             "arrival_price": arrival_price,
             "arrival_timestamp": arrival_timestamp,
+            "price_slippage": price_slippage,
+            "percentage_slippage": percentage_slippage,
+            "total_slippage": total_slippage,
         }

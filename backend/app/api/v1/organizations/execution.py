@@ -380,9 +380,9 @@ def calculate_execution_tca(
             "net_execution_cost": result["net_execution_cost"],
         },
         "slippage": {
-            "price": None,
-            "percentage": None,
-            "total": None,
+            "price": result["price_slippage"],
+            "percentage": result["percentage_slippage"],
+            "total": result["total_slippage"],
         },
         "is_fully_filled": result["is_fully_filled"],
     }
