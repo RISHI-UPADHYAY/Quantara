@@ -90,10 +90,29 @@ class ExecutionOrderRepository:
         return self.db.scalar(statement)
 
 
+    def get_by_id_in_project_for_update(
+        self,
+        *,
+        order_id: uuid.UUID,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+    ) -> ExecutionOrder | None:
+
+        statement = (
+            select(ExecutionOrder).where(
+                ExecutionOrder.id == order_id,
+                ExecutionOrder.organization_id == organization_id,
+                ExecutionOrder.project_id == ExecutionOrder.project_id,
+            ).with_for_update()
+        )
+
+        return self.db.scalar(statement)
+
+
     def get_by_external_order_id(
         self,
         *,
-        external_order_id: uuid.UUID,
+        external_order_id: str,
         organization_id: uuid.UUID,
         project_id: uuid.UUID,
     ) -> ExecutionOrder | None:
@@ -196,7 +215,7 @@ class ExecutionOrderRepository:
         order.status = status
         order.completed_at = completed_at
 
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(order)
 
         return order

@@ -40,8 +40,7 @@ class ExecutionFillRepository:
         )
 
         self.db.add(fill)
-        self.db.commit()
-        self.db.refresh(fill)
+        self.db.flush()
 
         return fill
 

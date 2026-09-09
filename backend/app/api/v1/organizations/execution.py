@@ -20,6 +20,7 @@ from app.schemas.execution import (
     ExecutionOrderCreateRequest,
     ExecutionOrderResponse,
 )
+from app.services.execution import ExecutionService
 
 
 router = APIRouter()
@@ -42,15 +43,15 @@ def create_execution_order(
     db: Session = Depends(get_db),
 ):
 
-    repository = ExecutionOrderRepository(db)
+    service = ExecutionService(db)
 
-    order = repository.create(
+    return service.create_order(
         organization_id=organization_id,
         project_id=project_id,
         created_by=membership.user_id,
         external_order_id=request.external_order_id,
         client_order_id=request.client_order_id,
-        symbol=request.symbol.upper(),
+        symbol=request.symbol,
         side=request.side,
         quantity=request.quantity,
         order_type=request.order_type,
@@ -58,12 +59,11 @@ def create_execution_order(
         strategy=request.strategy,
         algorithm=request.algorithm,
         venue=request.venue,
-        status=request.status,
+        order_status=request.status,
         submitted_at=request.submitted_at,
         completed_at=request.completed_at,
     )
 
-    return order
 
 
 @router.get(
@@ -224,24 +224,12 @@ def create_execution_fill(
     db: Session = Depends(get_db),
 ):
 
-    order_repository = ExecutionOrderRepository(db)
+    service = ExecutionService(db)
 
-    order = order_repository.get_by_id_in_project(
+    return service.create_fill(
         organization_id=organization_id,
         project_id=project_id,
         order_id=order_id,
-    )
-
-    if order is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Execution order not found",
-        )
-
-    fill_repository = ExecutionFillRepository(db)
-
-    fill = fill_repository.create(
-        execution_order_id=order.id,
         external_fill_id=request.external_fill_id,
         price=request.price,
         quantity=request.quantity,
@@ -250,8 +238,6 @@ def create_execution_fill(
         commission=request.commission,
         fees=request.fees,
     )
-
-    return fill
 
 
 @router.get(
