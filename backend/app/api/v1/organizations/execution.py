@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import uuid
 from datetime import datetime, timezone
 
@@ -11,6 +13,8 @@ from sqlalchemy.orm import Session
 from app.dependencies.auth import get_db
 from app.core.permissions import ROLE_ADMIN, ROLE_ANALYST
 from app.dependencies.organization import require_organization_role
+from app.repositories.dataset_repository import DatasetRepository
+from app.repositories.dataset_version_repository import DatasetVersionRepository
 from app.models.organization_member import OrganizationMember
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
@@ -20,7 +24,8 @@ from app.schemas.execution import (
     ExecutionOrderCreateRequest,
     ExecutionOrderResponse,
 )
-from app.services.execution import ExecutionService, TCAEngine
+from app.schemas.tca import TCARequest, TCAResponse
+from app.services.execution import ExecutionService, TCAEngine, ExecutionMarketDataLoader
 
 
 router = APIRouter()
@@ -281,12 +286,14 @@ def list_execution_fills(
 
 @router.post(
     "/{organization_id}/projects/{project_id}/execution/orders/{order_id}/tca",
+    response_model=TCAResponse,
     status_code=status.HTTP_200_OK,
 )
 def calculate_execution_tca(
     organization_id: uuid.UUID,
     project_id: uuid.UUID,
     order_id: uuid.UUID,
+    request: TCARequest,
     membership: OrganizationMember = Depends(
         require_organization_role(
             ROLE_ADMIN,
@@ -296,13 +303,86 @@ def calculate_execution_tca(
     db: Session = Depends(get_db),
 ):
 
-    engine = TCAEngine(
-        order_repository=ExecutionOrderRepository(db),
-        fill_repository=ExecutionFillRepository(db),
+    dataset_repository = DatasetRepository(db)
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset = dataset_repository.get_by_id_in_project(
+        dataset_id=request.market_data.dataset_id,
+        organization_id=organization_id,
+        project_id=project_id,
     )
 
-    return engine.calculate_execution_statistics(
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset not found."
+        )
+
+    dataset_version = dataset_version_repository.get_by_id_for_dataset(
+        dataset_version_id=request.market_data.dataset_version_id,
+        dataset_id=dataset.id,
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset version not found."
+        )
+
+    if dataset_version.storage_uri is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Market-data dataset version has no storage URI."
+        )
+
+    market_data = ExecutionMarketDataLoader(
+        storage_root=(
+            Path(__file__).resolve().parents[4] / "storage"
+        ),
+    ).load(dataset_version.storage_uri)
+
+    order_repository = ExecutionOrderRepository(db)
+    fill_repository = ExecutionFillRepository(db)
+
+    engine = TCAEngine(
+        order_repository=order_repository,
+        fill_repository=fill_repository,
+    )
+
+    result = engine.calculate_execution_statistics(
         organization_id=organization_id,
         project_id=project_id,
         order_id=order_id,
+        market_data=market_data,
     )
+
+    return {
+        "order": {
+            "order_id": result["order_id"],
+            "symbol": result["symbol"],
+            "side": result["side"],
+            "ordered_quantity": result["ordered_quantity"],
+            "executed_quantity": result["executed_quantity"],
+            "remaining_quantity": result["remaining_quantity"],
+            "fill_count": result["fill_count"],
+        },
+        "benchmarks": {
+            "arrival_price": result["arrival_price"],
+            "arrival_timestamp": result["arrival_timestamp"],
+        },
+        "execution": {
+            "average_execution_price": result["average_execution_price"],
+            "execution_vwap": result["execution_vwap"],
+            "gross_notional": result["gross_notional"],
+            "commission": result["commission"],
+            "fees": result["fees"],
+            "cost_per_share": result["cost_per_share"],
+            "net_execution_cost": result["net_execution_cost"],
+        },
+        "slippage": {
+            "price": None,
+            "percentage": None,
+            "total": None,
+        },
+        "is_fully_filled": result["is_fully_filled"],
+    }
