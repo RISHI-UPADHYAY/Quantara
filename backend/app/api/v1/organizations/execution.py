@@ -20,7 +20,7 @@ from app.schemas.execution import (
     ExecutionOrderCreateRequest,
     ExecutionOrderResponse,
 )
-from app.services.execution import ExecutionService
+from app.services.execution import ExecutionService, TCAEngine
 
 
 router = APIRouter()
@@ -276,4 +276,33 @@ def list_execution_fills(
 
     return fill_repository.list_by_order(
         execution_order_id=order.id,
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/orders/{order_id}/tca",
+    status_code=status.HTTP_200_OK,
+)
+def calculate_execution_tca(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    order_id: uuid.UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    engine = TCAEngine(
+        order_repository=ExecutionOrderRepository(db),
+        fill_repository=ExecutionFillRepository(db),
+    )
+
+    return engine.calculate_execution_statistics(
+        organization_id=organization_id,
+        project_id=project_id,
+        order_id=order_id,
     )
