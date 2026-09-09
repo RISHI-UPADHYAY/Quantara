@@ -84,7 +84,7 @@ class ExecutionOrderResponse(BaseModel):
     completed_at: datetime | None
 
     created_by: uuid.UUID
-    created_at: uuid.UUID
+    created_at: datetime
 
 
 class ExecutionFillCreateRequest(BaseModel):
