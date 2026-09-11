@@ -54,6 +54,7 @@ class TCAResponse(BaseModel):
     execution: TCAExecutionResult
     slippage: TCASlippageResult
     implementation_shortfall: TCAImplementationShortfallResult
+    market_impact: TCAMarketImpactResult
     is_fully_filled: bool
 
 
@@ -62,3 +63,11 @@ class TCAImplementationShortfallResult(BaseModel):
     percentage_shortfall: float | None = None
     explicit_costs: float | None = None 
     total_shortfall: float | None = None 
+
+
+class TCAMarketImpactResult(BaseModel):
+    end_market_price: float | None = None
+    market_impact_timestamp: str | None = None
+    impact_per_share: float | None = None
+    percentage: float | None = None 
+    total: float | None = None

@@ -392,5 +392,12 @@ def calculate_execution_tca(
             "explicit_costs": result["explicit_costs"],
             "total_shortfall": result["total_shortfall"],
         },
+        "market_impact": {
+            "end_market_price": result["end_market_price"],
+            "market_impact_timestamp": result["market_impact_timestamp"],
+            "impact_per_share": result["market_impact_per_share"],
+            "percentage": result["percentage_market_impact"],
+            "total": result["total_market_impact"],
+        },
         "is_fully_filled": result["is_fully_filled"],
     }

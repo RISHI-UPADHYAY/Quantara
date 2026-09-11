@@ -11,6 +11,7 @@ from app.services.execution.slippage_engine import SlippageEngine
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
 from app.services.execution.implementation_shortfall_engine import ImplementationShortfallEngine
+from app.services.execution.market_impact_engine import MarketImpactEngine
 
 
 class TCAEngine:
@@ -22,6 +23,7 @@ class TCAEngine:
         benchmark_engine: BenchmarkEngine | None = None,
         slippage_engine: SlippageEngine | None = None,
         implementation_shortfall_engine: ImplementationShortfallEngine | None = None,
+        market_impact_engine: MarketImpactEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -30,6 +32,7 @@ class TCAEngine:
         )
         self.slippage_engine = slippage_engine or SlippageEngine()
         self.implementation_shortfall_engine = implementation_shortfall_engine or ImplementationShortfallEngine()
+        self.market_impact_engine = market_impact_engine or MarketImpactEngine()
 
 
     def calculate_execution_statistics(
@@ -119,8 +122,11 @@ class TCAEngine:
 
         arrival_price = None
         arrival_timestamp = None
-        arrival_vwap = None
-        arrival_twap = None
+        end_market_price = None
+        market_impact_per_share = None
+        percentage_market_impact = None
+        total_market_impact = None
+        market_impact_timestamp = None
 
         if market_data is not None:
             arrival_result = self.benchmark_engine.calculate_arrival_price(
@@ -137,6 +143,28 @@ class TCAEngine:
             end_timestamp = pd.Timestamp(
                 max(fill.executed_at for fill in fills)
             )
+
+            end_market_result = self.benchmark_engine.calculate_end_market_price(
+                order_symbol=order.symbol,
+                market_data=market_data,
+                end_timestamp=end_timestamp,
+            )
+
+            end_market_price = end_market_result["end_market_price"]
+            market_impact_timestamp = end_market_result["market_price_timestamp"]
+
+            market_impact_result = self.market_impact_engine.calculate_market_impact(
+                side=order.side,
+                arrival_price=arrival_price,
+                end_market_price=end_market_price,
+                executed_quantity=executed_quantity,
+            )
+
+            market_impact_per_share = market_impact_result["impact_per_share"]
+
+            percentage_market_impact = market_impact_result["percentage_impact"]
+
+            total_market_impact = market_impact_result["total_impact"]
 
             vwap_result = self.benchmark_engine.calculate_market_vwap(
                 order_symbol=order.symbol,
@@ -216,4 +244,9 @@ class TCAEngine:
             "percentage_shortfall": percentage_shortfall,
             "total_shortfall": total_shortfall,
             "explicit_costs": explicit_costs,
+            "end_market_price": end_market_price,
+            "market_impact_timestamp": market_impact_timestamp,
+            "market_impact_per_share": market_impact_per_share,
+            "percentage_market_impact": percentage_market_impact,
+            "total_market_impact": total_market_impact,
         }

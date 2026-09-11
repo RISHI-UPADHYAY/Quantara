@@ -398,6 +398,98 @@ class BenchmarkEngine:
         }
 
 
+    def calculate_end_market_price(
+        self,
+        *,
+        order_symbol: str,
+        market_data: pd.DataFrame,
+        end_timestamp: pd.Timestamp,
+    ) -> dict:
+        """
+        Return the last valid market price at or before the end timestamp.
+        """
+
+        if market_data.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Market data is empty.",
+            )
+
+        dataframe = self._normalize_market_data(market_data)
+
+        timestamp_column = self._resolve_column(
+            dataframe,
+            self.TIMESTAMP_COLUMNS,
+        )
+
+        price_column = self._resolve_column(
+            dataframe,
+            self.PRICE_COLUMNS,
+        )
+
+        dataframe[timestamp_column] = pd.to_datetime(
+            dataframe[timestamp_column],
+            utc=True,
+            errors="coerce",
+        )
+
+        dataframe[price_column] = pd.to_numeric(
+            dataframe[price_column],
+            errors="coerce",
+        )
+
+        dataframe = dataframe.dropna(
+            subset=[timestamp_column, price_column]
+        )
+
+
+        dataframe = dataframe[
+            dataframe[price_column] > 0
+        ]
+
+        symbol_column = self._resolve_optional_column(
+            dataframe,
+            self.SYMBOL_COLUMNS,
+        )
+
+        if symbol_column is not None:
+            dataframe = dataframe[
+                dataframe[symbol_column]
+                .astype(str)
+                .str.upper()
+                == order_symbol.upper()            
+            ]
+
+        end_timestamp = pd.Timestamp(end_timestamp)
+
+
+        if end_timestamp.tzinfo is None:
+            end_timestamp = end_timestamp.tz_localize("UTC")
+
+        else:
+            end_timestamp = end_timestamp.tz_convert("UTC")
+
+        dataframe = dataframe[
+            dataframe[timestamp_column] <= end_timestamp
+        ].sort_values(timestamp_column)
+
+        if dataframe.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="No valid market-data observation exists at or before the execution end timestamp.",
+            )
+
+        last_observation = dataframe.iloc[-1]
+
+        return {
+            "symbol": order_symbol,
+            "end_timestamp": end_timestamp.isoformat(),
+            "market_price_timestamp": last_observation[timestamp_column].isoformat(),
+            "end_market_price": float(last_observation[price_column]),
+            "price_column": price_column,
+        }
+
+
     @staticmethod
     def _normalize_market_data(
         dataframe: pd.DataFrame,
