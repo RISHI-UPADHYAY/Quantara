@@ -48,15 +48,6 @@ class TCASlippageResult(BaseModel):
     total: float | None = None
 
 
-class TCAResponse(BaseModel):
-    order: TCAOrderResult
-    benchmarks: TCABenchmarkResult
-    execution: TCAExecutionResult
-    slippage: TCASlippageResult
-    implementation_shortfall: TCAImplementationShortfallResult
-    market_impact: TCAMarketImpactResult
-    is_fully_filled: bool
-
 
 class TCAImplementationShortfallResult(BaseModel):
     price_shortfall: float | None = None
@@ -71,3 +62,26 @@ class TCAMarketImpactResult(BaseModel):
     impact_per_share: float | None = None
     percentage: float | None = None 
     total: float | None = None
+
+
+class TCAExecutionQualityComponentResult(BaseModel):
+    score: float
+    weight: float
+    percentage: float
+
+
+class TCAExecutionQualityResult(BaseModel):
+    score: float
+    rating: str
+    components: dict[str, TCAExecutionQualityComponentResult]
+
+
+class TCAResponse(BaseModel):
+    order: TCAOrderResult
+    benchmarks: TCABenchmarkResult
+    execution: TCAExecutionResult
+    slippage: TCASlippageResult
+    implementation_shortfall: TCAImplementationShortfallResult
+    market_impact: TCAMarketImpactResult
+    execution_quality: TCAExecutionQualityResult | None = None
+    is_fully_filled: bool

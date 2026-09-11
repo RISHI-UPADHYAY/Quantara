@@ -12,6 +12,7 @@ from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
 from app.services.execution.implementation_shortfall_engine import ImplementationShortfallEngine
 from app.services.execution.market_impact_engine import MarketImpactEngine
+from app.services.execution.execution_quality_engine import ExecutionQualityEngine
 
 
 class TCAEngine:
@@ -24,6 +25,7 @@ class TCAEngine:
         slippage_engine: SlippageEngine | None = None,
         implementation_shortfall_engine: ImplementationShortfallEngine | None = None,
         market_impact_engine: MarketImpactEngine | None = None,
+        execution_quality_engine: ExecutionQualityEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -33,6 +35,7 @@ class TCAEngine:
         self.slippage_engine = slippage_engine or SlippageEngine()
         self.implementation_shortfall_engine = implementation_shortfall_engine or ImplementationShortfallEngine()
         self.market_impact_engine = market_impact_engine or MarketImpactEngine()
+        self.execution_quality_engine = execution_quality_engine or ExecutionQualityEngine()
 
 
     def calculate_execution_statistics(
@@ -122,6 +125,8 @@ class TCAEngine:
 
         arrival_price = None
         arrival_timestamp = None
+        market_vwap = None
+        market_twap = None
         end_market_price = None
         market_impact_per_share = None
         percentage_market_impact = None
@@ -217,6 +222,27 @@ class TCAEngine:
             total_shortfall = shortfall_result["total_shortfall"]
             explicit_costs = shortfall_result["explicit_costs"]
 
+        execution_quality = None
+
+        if (
+            arrival_price is not None
+            and market_vwap is not None
+            and total_slippage is not None
+            and total_shortfall is not None
+            and total_market_impact is not None
+        ):
+
+            execution_quality = self.execution_quality_engine.calculate_execution_quality(
+                arrival_price=arrival_price,
+                execution_price=average_execution_price,
+                market_vwap=market_vwap,
+                total_slippage=total_slippage,
+                total_shortfall=total_shortfall,
+                total_market_impact=total_market_impact,
+                executed_quantity=executed_quantity,
+                side=order.side,
+            )
+
         return {
             "order_id": str(order.id),
             "symbol": order.symbol,
@@ -249,4 +275,5 @@ class TCAEngine:
             "market_impact_per_share": market_impact_per_share,
             "percentage_market_impact": percentage_market_impact,
             "total_market_impact": total_market_impact,
+            "execution_quality": execution_quality,
         }

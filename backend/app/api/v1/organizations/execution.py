@@ -399,5 +399,6 @@ def calculate_execution_tca(
             "percentage": result["percentage_market_impact"],
             "total": result["total_market_impact"],
         },
+        "execution_quality": result["execution_quality"],
         "is_fully_filled": result["is_fully_filled"],
     }
