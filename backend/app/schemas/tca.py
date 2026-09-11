@@ -28,6 +28,8 @@ class TCAOrderResult(BaseModel):
 class TCABenchmarkResult(BaseModel):
     arrival_price: float | None = None  
     arrival_timestamp: str | None = None
+    market_vwap: float | None = None
+    market_twap: float | None = None
 
 
 class TCAExecutionResult(BaseModel):

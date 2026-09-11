@@ -369,6 +369,8 @@ def calculate_execution_tca(
         "benchmarks": {
             "arrival_price": result["arrival_price"],
             "arrival_timestamp": result["arrival_timestamp"],
+            "market_vwap": result["market_vwap"],
+            "market_twap": result["market_twap"],
         },
         "execution": {
             "average_execution_price": result["average_execution_price"],

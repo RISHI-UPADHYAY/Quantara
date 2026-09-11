@@ -116,6 +116,8 @@ class TCAEngine:
 
         arrival_price = None
         arrival_timestamp = None
+        arrival_vwap = None
+        arrival_twap = None
 
         if market_data is not None:
             arrival_result = self.benchmark_engine.calculate_arrival_price(
@@ -127,6 +129,28 @@ class TCAEngine:
 
             arrival_price = arrival_result["arrival_price"]
             arrival_timestamp = arrival_result["arrival_timestamp"]
+
+            start_timestamp = pd.Timestamp(order.submitted_at)
+            end_timestamp = pd.Timestamp(
+                max(fill.executed_at for fill in fills)
+            )
+
+            vwap_result = self.benchmark_engine.calculate_market_vwap(
+                order_symbol=order.symbol,
+                market_data=market_data,
+                start_timestamp=start_timestamp,
+                end_timestamp=end_timestamp,
+            )
+
+            twap_result = self.benchmark_engine.calculate_market_twap(
+                order_symbol=order.symbol,
+                market_data=market_data,
+                start_timestamp=start_timestamp,
+                end_timestamp=end_timestamp,
+            )
+
+            market_vwap = vwap_result["vwap"]
+            market_twap = twap_result["twap"]
 
         price_slippage = None
         percentage_slippage = None
@@ -162,6 +186,8 @@ class TCAEngine:
             "is_fully_filled": executed_quantity == order_quantity,
             "arrival_price": arrival_price,
             "arrival_timestamp": arrival_timestamp,
+            "market_vwap": market_vwap,
+            "market_twap": market_twap,
             "price_slippage": price_slippage,
             "percentage_slippage": percentage_slippage,
             "total_slippage": total_slippage,

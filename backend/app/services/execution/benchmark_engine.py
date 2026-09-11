@@ -166,6 +166,237 @@ class BenchmarkEngine:
             "market_data_rows_considered": len(dataframe),
         }
 
+    def calculate_market_vwap(
+        self,
+        *,
+        order_symbol: pd.DataFrame,
+        market_data: pd.DataFrame,
+        start_timestamp: pd.Timestamp,
+        end_timestamp: pd.Timestamp,
+    ) -> dict:
+        """
+        Calculate market VWAP for a symbol over a time interval.
+
+        VWAP = sum(price * volume) / sum(volume)
+        """
+
+        if market_data.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Market data is empty.",
+            )
+
+        dataframe = self._normalize_market_data(market_data)
+
+        timestamp_column = self._resolve_column(
+            dataframe,
+            self.TIMESTAMP_COLUMNS,
+        )
+
+        price_column = self._resolve_column(
+            dataframe,
+            self.PRICE_COLUMNS,
+        )
+
+        volume_column = self._resolve_column(
+            dataframe,
+            ("volume", "quantity", "qty"),
+        )
+
+        dataframe[timestamp_column] = pd.to_datetime(
+            dataframe[timestamp_column],
+            utc=True,
+            errors="coerce",
+        )
+
+        dataframe[price_column] = pd.to_numeric(
+            dataframe[price_column],
+            errors="coerce",
+        )
+
+        dataframe[volume_column] = pd.to_numeric(
+            dataframe[volume_column],
+            errors="coerce",
+        )
+
+        dataframe = dataframe.dropna(
+            subset=[
+                timestamp_column,
+                price_column,
+                volume_column,
+            ]
+        )
+
+        dataframe = dataframe[
+            (dataframe[price_column] > 0)
+            & (dataframe[volume_column] > 0)
+        ]
+
+        symbol_column = self._resolve_optional_column(
+            dataframe,
+            self.SYMBOL_COLUMNS,
+        )
+
+        if symbol_column is not None:
+            dataframe = dataframe[
+                dataframe[symbol_column]
+                .astype(str)
+                .str.upper()
+                == order_symbol.upper()
+            ]
+
+        start_timestamp = pd.Timestamp(start_timestamp)
+
+        if start_timestamp.tzinfo is None:
+            start_timestamp = start_timestamp.tz_localize("UTC")
+
+        else:
+            start_timestamp = start_timestamp.tz_convert("UTC")
+
+        end_timestamp = pd.Timestamp(end_timestamp)
+
+        if end_timestamp.tzinfo is None:
+            end_timestamp = end_timestamp.tz_localize("UTC")
+
+        else:
+            end_timestamp = end_timestamp.tz_convert("UTC")
+
+        dataframe = dataframe[
+            (dataframe[timestamp_column] >= start_timestamp)
+            & (dataframe[timestamp_column] <= end_timestamp)
+        ]
+
+        if dataframe.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="No valid market data found in the requested VWAP interval."
+            )
+
+        total_volume = dataframe[volume_column].sum()
+
+        if total_volume <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Market-data volume must be greater than zero.",
+            )
+
+        vwap = (
+            dataframe[price_column] * dataframe[volume_column]
+        ).sum() / total_volume
+
+        return {
+            "symbol": order_symbol,
+            "start_timestamp": start_timestamp.isoformat(),
+            "end_timestamp": end_timestamp.isoformat(),
+            "vwap": float(vwap),
+            "total_volume": float(total_volume),
+            "market_data_rows": len(dataframe),
+        }
+
+    def calculate_market_twap(
+        self,
+        *,
+        order_symbol: str,
+        market_data: pd.DataFrame,
+        start_timestamp: pd.Timestamp,
+        end_timestamp: pd.Timestamp,
+    ) -> dict:
+        """
+        Calculate market TWAP for a symbol over a time interval.
+
+        Each valid market observation receives equal weight.
+        """
+
+        if market_data.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Market data is empty.",
+            )
+
+        dataframe = self._normalize_market_data(market_data)
+
+        timestamp_column = self._resolve_column(
+            dataframe,
+            self.TIMESTAMP_COLUMNS,
+        )
+
+        price_column = self._resolve_column(
+            dataframe,
+            self.PRICE_COLUMNS,
+        )
+
+        dataframe[timestamp_column] = pd.to_datetime(
+            dataframe[timestamp_column],
+            utc=True,
+            errors="coerce",
+        )
+
+        dataframe[price_column] = pd.to_numeric(
+            dataframe[price_column],
+            errors="coerce",
+        )
+
+        dataframe = dataframe.dropna(
+            subset=[
+                timestamp_column,
+                price_column,
+            ]
+        )
+
+        dataframe = dataframe[
+            dataframe[price_column] > 0
+        ]
+
+        symbol_column = self._resolve_optional_column(
+            dataframe,
+            self.SYMBOL_COLUMNS,
+        )
+
+        if symbol_column is not None:
+            dataframe = dataframe[
+                dataframe[symbol_column]
+                .astype(str)
+                .str.upper()
+                == order_symbol.upper()
+            ]
+
+        start_timestamp = pd.Timestamp(start_timestamp)
+
+        if start_timestamp.tzinfo is None:
+            start_timestamp = start_timestamp.tz_localize("UTC")
+
+        else:
+            start_timestamp = start_timestamp.tz_convert("UTC")
+
+        end_timestamp = pd.Timestamp(end_timestamp)
+
+        if end_timestamp.tzinfo is None:
+            end_timestamp = end_timestamp.tz_localize("UTC")
+
+        else: 
+            end_timestamp = end_timestamp.tz_convert("UTC")
+
+        dataframe = dataframe[
+            (dataframe[timestamp_column] >= start_timestamp)
+            & (dataframe[timestamp_column] <= end_timestamp)
+        ]
+
+        if dataframe.empty:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="No valid market data found in the requested TWAP interval.",
+            )
+
+        twap = dataframe[price_column].mean()
+
+        return {
+            "symbol": order_symbol,
+            "start_timestamp": start_timestamp.isoformat(),
+            "end_timestamp": end_timestamp.isoformat(),
+            "twap": float(twap),
+            "market_data_rows": len(dataframe),
+        }
+
 
     @staticmethod
     def _normalize_market_data(
