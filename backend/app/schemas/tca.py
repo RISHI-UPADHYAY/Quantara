@@ -53,4 +53,12 @@ class TCAResponse(BaseModel):
     benchmarks: TCABenchmarkResult
     execution: TCAExecutionResult
     slippage: TCASlippageResult
+    implementation_shortfall: TCAImplementationShortfallResult
     is_fully_filled: bool
+
+
+class TCAImplementationShortfallResult(BaseModel):
+    price_shortfall: float | None = None
+    percentage_shortfall: float | None = None
+    explicit_costs: float | None = None 
+    total_shortfall: float | None = None 

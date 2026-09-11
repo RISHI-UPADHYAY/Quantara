@@ -10,6 +10,7 @@ from app.services.execution.benchmark_engine import BenchmarkEngine
 from app.services.execution.slippage_engine import SlippageEngine   
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
+from app.services.execution.implementation_shortfall_engine import ImplementationShortfallEngine
 
 
 class TCAEngine:
@@ -20,6 +21,7 @@ class TCAEngine:
         fill_repository: ExecutionFillRepository,
         benchmark_engine: BenchmarkEngine | None = None,
         slippage_engine: SlippageEngine | None = None,
+        implementation_shortfall_engine: ImplementationShortfallEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -27,6 +29,7 @@ class TCAEngine:
             order_repository=order_repository,
         )
         self.slippage_engine = slippage_engine or SlippageEngine()
+        self.implementation_shortfall_engine = implementation_shortfall_engine or ImplementationShortfallEngine()
 
 
     def calculate_execution_statistics(
@@ -155,6 +158,10 @@ class TCAEngine:
         price_slippage = None
         percentage_slippage = None
         total_slippage = None
+        price_shortfall = None
+        percentage_shortfall = None
+        total_shortfall = None
+        explicit_costs = None
 
         if arrival_price is not None:
             slippage_result = self.slippage_engine.calculate_slippage(
@@ -167,6 +174,20 @@ class TCAEngine:
             price_slippage = slippage_result["price_slippage"]
             percentage_slippage = slippage_result["percentage_slippage"]
             total_slippage = slippage_result["total_slippage"]
+
+            shortfall_result = self.implementation_shortfall_engine.calculate(
+                side=order.side,
+                arrival_price=arrival_price,
+                execution_price=average_execution_price,
+                executed_quantity=executed_quantity,
+                commission=commission,
+                fees=fees,
+            )
+
+            price_shortfall = shortfall_result["price_shortfall"]
+            percentage_shortfall = shortfall_result["percentage_shortfall"]
+            total_shortfall = shortfall_result["total_shortfall"]
+            explicit_costs = shortfall_result["explicit_costs"]
 
         return {
             "order_id": str(order.id),
@@ -191,4 +212,8 @@ class TCAEngine:
             "price_slippage": price_slippage,
             "percentage_slippage": percentage_slippage,
             "total_slippage": total_slippage,
+            "price_shortfall": price_shortfall,
+            "percentage_shortfall": percentage_shortfall,
+            "total_shortfall": total_shortfall,
+            "explicit_costs": explicit_costs,
         }

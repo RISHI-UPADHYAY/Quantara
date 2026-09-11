@@ -386,5 +386,11 @@ def calculate_execution_tca(
             "percentage": result["percentage_slippage"],
             "total": result["total_slippage"],
         },
+        "implementation_shortfall": {
+            "price_shortfall": result["price_shortfall"],
+            "percentage_shortfall": result["percentage_shortfall"],
+            "explicit_costs": result["explicit_costs"],
+            "total_shortfall": result["total_shortfall"],
+        },
         "is_fully_filled": result["is_fully_filled"],
     }
