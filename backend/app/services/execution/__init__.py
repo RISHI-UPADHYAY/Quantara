@@ -6,6 +6,7 @@ from app.services.execution.slippage_engine import SlippageEngine
 from app.services.execution.implementation_shortfall_engine import ImplementationShortfallEngine
 from app.services.execution.market_impact_engine import MarketImpactEngine
 from app.services.execution.execution_quality_engine import ExecutionQualityEngine
+from app.services.execution.execution_diagnosis_engine import ExecutionDiagnosisEngine
 
 __all__ = [
     "ExecutionService",
@@ -16,4 +17,5 @@ __all__ = [
     "ImplementationShortfallEngine",
     "MarketImpactEngine",
     "ExecutionQualityEngine",
+    "ExecutionDiagnosisEngine",
 ]

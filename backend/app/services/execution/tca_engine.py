@@ -13,6 +13,7 @@ from app.repositories.execution_order_repository import ExecutionOrderRepository
 from app.services.execution.implementation_shortfall_engine import ImplementationShortfallEngine
 from app.services.execution.market_impact_engine import MarketImpactEngine
 from app.services.execution.execution_quality_engine import ExecutionQualityEngine
+from app.services.execution.execution_diagnosis_engine import ExecutionDiagnosisEngine
 
 
 class TCAEngine:
@@ -26,6 +27,7 @@ class TCAEngine:
         implementation_shortfall_engine: ImplementationShortfallEngine | None = None,
         market_impact_engine: MarketImpactEngine | None = None,
         execution_quality_engine: ExecutionQualityEngine | None = None,
+        execution_diagnosis_engine: ExecutionDiagnosisEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -36,6 +38,7 @@ class TCAEngine:
         self.implementation_shortfall_engine = implementation_shortfall_engine or ImplementationShortfallEngine()
         self.market_impact_engine = market_impact_engine or MarketImpactEngine()
         self.execution_quality_engine = execution_quality_engine or ExecutionQualityEngine()
+        self.execution_diagnosis_engine = execution_diagnosis_engine or ExecutionDiagnosisEngine()
 
 
     def calculate_execution_statistics(
@@ -243,6 +246,30 @@ class TCAEngine:
                 side=order.side,
             )
 
+        execution_diagnoses = None
+
+        if(
+            arrival_price is not None
+            and market_vwap is not None
+            and end_market_price is not None
+            and total_slippage is not None
+            and total_shortfall is not None
+            and total_market_impact is not None
+        ):
+            execution_diagnoses = self.execution_diagnosis_engine.calculate_execution_diagnoses(
+                arrival_price=arrival_price,
+                execution_price=average_execution_price,
+                market_vwap=market_vwap,
+                end_market_price=end_market_price,
+                total_slippage=total_slippage,
+                total_shortfall=total_shortfall,
+                total_market_impact=total_market_impact,
+                commission=commission,
+                fees=fees,
+                executed_quantity=executed_quantity,
+                side=order.side,
+            )
+
         return {
             "order_id": str(order.id),
             "symbol": order.symbol,
@@ -276,4 +303,5 @@ class TCAEngine:
             "percentage_market_impact": percentage_market_impact,
             "total_market_impact": total_market_impact,
             "execution_quality": execution_quality,
+            "execution_diagnoses": execution_diagnoses,
         }

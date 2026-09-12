@@ -400,5 +400,6 @@ def calculate_execution_tca(
             "total": result["total_market_impact"],
         },
         "execution_quality": result["execution_quality"],
+        "execution_diagnoses": result["execution_diagnoses"],
         "is_fully_filled": result["is_fully_filled"],
     }

@@ -70,6 +70,18 @@ class TCAExecutionQualityComponentResult(BaseModel):
     percentage: float
 
 
+class TCAExecutionDiagnosisItem(BaseModel):
+    code: str
+    severity: str
+    message: str
+    evidence: dict[str, float | str]
+
+
+class TCAExecutionDiagnosesResult(BaseModel):
+    overall_status: str 
+    diagnoses: list[TCAExecutionDiagnosisItem]
+
+
 class TCAExecutionQualityResult(BaseModel):
     score: float
     rating: str
@@ -84,4 +96,5 @@ class TCAResponse(BaseModel):
     implementation_shortfall: TCAImplementationShortfallResult
     market_impact: TCAMarketImpactResult
     execution_quality: TCAExecutionQualityResult | None = None
+    execution_diagnoses: TCAExecutionDiagnosesResult | None = None
     is_fully_filled: bool
