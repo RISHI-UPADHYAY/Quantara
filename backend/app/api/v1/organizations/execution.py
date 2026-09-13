@@ -401,5 +401,6 @@ def calculate_execution_tca(
         },
         "execution_quality": result["execution_quality"],
         "execution_diagnoses": result["execution_diagnoses"],
+        "execution_recommendations": result["execution_recommendations"],
         "is_fully_filled": result["is_fully_filled"],
     }

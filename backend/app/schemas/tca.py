@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel   
+from pydantic import BaseModel, Field   
 
 
 
@@ -88,6 +88,19 @@ class TCAExecutionQualityResult(BaseModel):
     components: dict[str, TCAExecutionQualityComponentResult]
 
 
+class TCAExecutionRecommendationItem(BaseModel):
+    diagnosis_code: str
+    severity: str
+    priority: str
+    title: str
+    rationale: str
+    suggested_actions: list[str]
+
+
+class TCAExecutionRecommendationsResult(BaseModel): 
+    recommendations: list[TCAExecutionRecommendationItem]
+
+
 class TCAResponse(BaseModel):
     order: TCAOrderResult
     benchmarks: TCABenchmarkResult
@@ -97,4 +110,5 @@ class TCAResponse(BaseModel):
     market_impact: TCAMarketImpactResult
     execution_quality: TCAExecutionQualityResult | None = None
     execution_diagnoses: TCAExecutionDiagnosesResult | None = None
+    execution_recommendations: list[TCAExecutionRecommendationItem] = Field(default_factory=list)
     is_fully_filled: bool

@@ -14,6 +14,7 @@ from app.services.execution.implementation_shortfall_engine import Implementatio
 from app.services.execution.market_impact_engine import MarketImpactEngine
 from app.services.execution.execution_quality_engine import ExecutionQualityEngine
 from app.services.execution.execution_diagnosis_engine import ExecutionDiagnosisEngine
+from app.services.execution.execution_recommendation_engine import ExecutionRecommendationEngine
 
 
 class TCAEngine:
@@ -28,6 +29,7 @@ class TCAEngine:
         market_impact_engine: MarketImpactEngine | None = None,
         execution_quality_engine: ExecutionQualityEngine | None = None,
         execution_diagnosis_engine: ExecutionDiagnosisEngine | None = None,
+        execution_recommendation_engine: ExecutionRecommendationEngine | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -39,6 +41,7 @@ class TCAEngine:
         self.market_impact_engine = market_impact_engine or MarketImpactEngine()
         self.execution_quality_engine = execution_quality_engine or ExecutionQualityEngine()
         self.execution_diagnosis_engine = execution_diagnosis_engine or ExecutionDiagnosisEngine()
+        self.execution_recommendation_engine = execution_recommendation_engine or ExecutionRecommendationEngine()
 
 
     def calculate_execution_statistics(
@@ -247,6 +250,7 @@ class TCAEngine:
             )
 
         execution_diagnoses = None
+        execution_recommendations = []
 
         if(
             arrival_price is not None
@@ -268,6 +272,10 @@ class TCAEngine:
                 fees=fees,
                 executed_quantity=executed_quantity,
                 side=order.side,
+            )
+
+            execution_recommendations = self.execution_recommendation_engine.generate_recommendations(
+                execution_diagnoses=execution_diagnoses,
             )
 
         return {
@@ -304,4 +312,5 @@ class TCAEngine:
             "total_market_impact": total_market_impact,
             "execution_quality": execution_quality,
             "execution_diagnoses": execution_diagnoses,
+            "execution_recommendations": execution_recommendations,
         }
