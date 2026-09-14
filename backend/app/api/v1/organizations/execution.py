@@ -24,7 +24,15 @@ from app.schemas.execution import (
     ExecutionOrderCreateRequest,
     ExecutionOrderResponse,
 )
-from app.schemas.tca import TCARequest, TCAResponse
+from app.schemas.tca import (
+    TCARequest, 
+    TCAResponse,
+    TCABatchRequest,
+    TCABatchOrderError,
+    TCABatchOrderResult,
+    TCABatchSummary,
+    TCABatchResponse,
+)
 from app.services.execution import ExecutionService, TCAEngine, ExecutionMarketDataLoader
 
 
@@ -284,6 +292,72 @@ def list_execution_fills(
     )
 
 
+def _build_tca_response(result: dict) -> dict:
+    return {
+        "order": {
+            "order_id": result["order_id"],
+            "symbol": result["symbol"],
+            "side": result["side"],
+            "ordered_quantity": result["ordered_quantity"],
+            "executed_quantity": result["executed_quantity"],
+            "remaining_quantity": result["remaining_quantity"],
+            "fill_count": result["fill_count"],
+        },
+        "benchmarks": {
+            "arrival_price": result["arrival_price"],
+            "arrival_timestamp": result["arrival_timestamp"],
+            "market_vwap": result["market_vwap"],
+            "market_vwap_unavailable_reason": (
+                result["market_vwap_unavailable_reason"]
+            ),
+            "market_twap": result["market_twap"],
+        },
+        "execution": {
+            "average_execution_price": result["average_execution_price"],
+            "execution_vwap": result["execution_vwap"],
+            "gross_notional": result["gross_notional"],
+            "commission": result["commission"],
+            "fees": result["fees"],
+            "cost_per_share": result["cost_per_share"],
+            "net_execution_cost": result["net_execution_cost"],
+        },
+        "slippage": {
+            "price": result["price_slippage"],
+            "percentage": result["percentage_slippage"],
+            "total": result["total_slippage"],
+        },
+        "implementation_shortfall": {
+            "price_shortfall": result["price_shortfall"],
+            "percentage_shortfall": result["percentage_shortfall"],
+            "explicit_costs": result["explicit_costs"],
+            "total_shortfall": result["total_shortfall"],
+        },
+        "market_impact": {
+            "measure": "arrival_to_end_market_price_change",
+            "interpretation": (
+                "Market movement during the execution window; "
+                "this does not establish causal market impact from the order."
+            ),
+            "end_market_price": result["end_market_price"],
+            "market_impact_timestamp": result["market_impact_timestamp"],
+            "impact_per_share": result["market_impact_per_share"],
+            "percentage": result["percentage_market_impact"],
+            "total": result["total_market_impact"],
+        },
+        "execution_quality": result["execution_quality"],
+        "execution_quality_unavailable_reason": (
+            result.get("execution_quality_unavailable_reason")
+        ),
+        "execution_diagnoses": result["execution_diagnoses"],
+        "execution_diagnoses_unavailable_reason": (
+            result.get("execution_diagnoses_unavailable_reason")
+        ),
+        "execution_evidence_set": result["execution_evidence_set"],
+        "execution_recommendations": result["execution_recommendations"],
+        "is_fully_filled": result["is_fully_filled"],
+    }
+
+
 @router.post(
     "/{organization_id}/projects/{project_id}/execution/orders/{order_id}/tca",
     response_model=TCAResponse,
@@ -356,60 +430,118 @@ def calculate_execution_tca(
         market_data=market_data,
     )
 
-    return {
-        "order": {
-            "order_id": result["order_id"],
-            "symbol": result["symbol"],
-            "side": result["side"],
-            "ordered_quantity": result["ordered_quantity"],
-            "executed_quantity": result["executed_quantity"],
-            "remaining_quantity": result["remaining_quantity"],
-            "fill_count": result["fill_count"],
-        },
-        "benchmarks": {
-            "arrival_price": result["arrival_price"],
-            "arrival_timestamp": result["arrival_timestamp"],
-            "market_vwap": result["market_vwap"],
-            "market_vwap_unavailable_reason": result["market_vwap_unavailable_reason"],
-            "market_twap": result["market_twap"],
-        },
-        "execution": {
-            "average_execution_price": result["average_execution_price"],
-            "execution_vwap": result["execution_vwap"],
-            "gross_notional": result["gross_notional"],
-            "commission": result["commission"],
-            "fees": result["fees"],
-            "cost_per_share": result["cost_per_share"],
-            "net_execution_cost": result["net_execution_cost"],
-        },
-        "slippage": {
-            "price": result["price_slippage"],
-            "percentage": result["percentage_slippage"],
-            "total": result["total_slippage"],
-        },
-        "implementation_shortfall": {
-            "price_shortfall": result["price_shortfall"],
-            "percentage_shortfall": result["percentage_shortfall"],
-            "explicit_costs": result["explicit_costs"],
-            "total_shortfall": result["total_shortfall"],
-        },
-        "market_impact": {
-            "measure": "arrival_to_end_market_price_change",
-            "interpretation": (
-                "Market movement during the execution window; "
-                "this does not establish causal market impact from the order."
-            ),
-            "end_market_price": result["end_market_price"],
-            "market_impact_timestamp": result["market_impact_timestamp"],
-            "impact_per_share": result["market_impact_per_share"],
-            "percentage": result["percentage_market_impact"],
-            "total": result["total_market_impact"],
-        },
-        "execution_quality": result["execution_quality"],
-        "execution_quality_unavailable_reason": result.get("execution_quality_unavailable_reason"),
-        "execution_diagnoses": result["execution_diagnoses"],
-        "execution_diagnoses_unavailable_reason": result.get("execution_diagnoses_unavailable_reason"),
-        "execution_evidence_set": result["execution_evidence_set"],
-        "execution_recommendations": result["execution_recommendations"],
-        "is_fully_filled": result["is_fully_filled"],
-    }
+    return _build_tca_response(result)
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/tca/batch",
+    response_model=TCABatchResponse,
+    status_code=status.HTTP_200_OK,
+)
+def calculate_execution_tca_batch(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    request: TCABatchRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    #Reject duplicate IDs rather than analyzing the same order twice.
+    if len(request.order_ids) != len(set(request.order_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="order_ids must not contain duplicates."
+        )
+
+    dataset_repository = DatasetRepository(db)
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset = dataset_repository.get_by_id_in_project(
+        dataset_id=request.market_data.dataset_id,
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset not found.",
+        )
+
+    dataset_version = dataset_version_repository.get_by_id_for_dataset(
+        dataset_version_id=request.market_data.dataset_version_id,
+        dataset_id=dataset.id,
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset version not found.",
+        )
+
+    if dataset_version.storage_uri is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Market-data dataset version has no storage URI.",
+        )
+
+    #Load market data once for the entire batch
+    market_data = ExecutionMarketDataLoader(
+        storage_root=(
+            Path(__file__).resolve().parents[4] / "storage"
+        ),
+    ).load(dataset_version.storage_uri)
+
+    engine = TCAEngine(
+        order_repository=ExecutionOrderRepository(db),
+        fill_repository=ExecutionFillRepository(db),
+    )
+
+    results: list[TCABatchOrderResult] = []
+    succeeded = 0
+    failed = 0
+
+    for order_id in request.order_ids:
+        try:
+            result = engine.calculate_execution_statistics(
+                organization_id=organization_id,
+                project_id=project_id,
+                order_id=order_id,
+                market_data=market_data,
+            )
+
+            results.append(
+                TCABatchOrderResult(
+                    order_id=order_id,
+                    result=_build_tca_response(result),
+                )
+            )
+
+            succeeded += 1
+
+        except HTTPException as exc:
+            #Expected per-order errors (e.g. order not found or no fills)
+            #should not prevent the remaining orders from being analyzed.
+            results.append(
+                TCABatchOrderResult(
+                    order_id=order_id,
+                    error=TCABatchOrderError(
+                        status_code=exc.status_code,
+                        detail=str(exc.detail),
+                    ),
+                )
+            )
+            failed += 1
+
+    return TCABatchResponse(
+        summary=TCABatchSummary(
+            requested=len(request.order_ids),
+            succeeded=succeeded,
+            failed=failed,
+        ),
+        results=results,
+    )

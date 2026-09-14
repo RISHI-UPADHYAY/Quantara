@@ -137,6 +137,32 @@ class TCAExecutionEvidenceSet(BaseModel):
         default_factory=list
     )
 
+class TCABatchRequest(BaseModel):
+    market_data: TCAMarketDataInput
+    order_ids: list[uuid.UUID] = Field(
+        min_length=1,
+        max_length=100
+    )
+
+class TCABatchOrderError(BaseModel):
+    status_code: int
+    detail: str
+
+class TCABatchOrderResult(BaseModel):
+    order_id: uuid.UUID
+    result: TCAResponse | None = None
+    error: TCABatchOrderError | None = None
+
+
+class TCABatchSummary(BaseModel):
+    requested: int
+    succeeded: int
+    failed: int
+
+class TCABatchResponse(BaseModel):
+    summary: TCABatchSummary
+    results: list[TCABatchOrderResult]
+
 
 class TCAResponse(BaseModel):
     order: TCAOrderResult
