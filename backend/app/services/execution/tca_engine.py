@@ -15,6 +15,7 @@ from app.services.execution.market_impact_engine import MarketImpactEngine
 from app.services.execution.execution_quality_engine import ExecutionQualityEngine
 from app.services.execution.execution_diagnosis_engine import ExecutionDiagnosisEngine
 from app.services.execution.execution_recommendation_engine import ExecutionRecommendationEngine
+from app.services.execution.evidence_set_builder import EvidenceSetBuilder
 
 
 class TCAEngine:
@@ -30,6 +31,7 @@ class TCAEngine:
         execution_quality_engine: ExecutionQualityEngine | None = None,
         execution_diagnosis_engine: ExecutionDiagnosisEngine | None = None,
         execution_recommendation_engine: ExecutionRecommendationEngine | None = None,
+        evidence_set_builder: EvidenceSetBuilder | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -42,6 +44,7 @@ class TCAEngine:
         self.execution_quality_engine = execution_quality_engine or ExecutionQualityEngine()
         self.execution_diagnosis_engine = execution_diagnosis_engine or ExecutionDiagnosisEngine()
         self.execution_recommendation_engine = execution_recommendation_engine or ExecutionRecommendationEngine()
+        self.evidence_set_builder = evidence_set_builder or EvidenceSetBuilder()
 
 
     def calculate_execution_statistics(
@@ -132,6 +135,7 @@ class TCAEngine:
         arrival_price = None
         arrival_timestamp = None
         market_vwap = None
+        vwap_result = None
         market_twap = None
         end_market_price = None
         market_impact_per_share = None
@@ -250,6 +254,7 @@ class TCAEngine:
             )
 
         execution_diagnoses = None
+        execution_evidence_set = None
         execution_recommendations = []
 
         if(
@@ -274,9 +279,16 @@ class TCAEngine:
                 side=order.side,
             )
 
-            execution_recommendations = self.execution_recommendation_engine.generate_recommendations(
-                execution_diagnoses=execution_diagnoses,
-            )
+            if execution_diagnoses is not None:
+                execution_evidence_set = self.evidence_set_builder.build(
+                    execution_diagnoses
+                )
+
+                execution_recommendations = (
+                    self.execution_recommendation_engine.generate_recommendations(
+                        execution_evidence_set=execution_evidence_set,
+                    )
+                )
 
         return {
             "order_id": str(order.id),
@@ -297,6 +309,11 @@ class TCAEngine:
             "arrival_price": arrival_price,
             "arrival_timestamp": arrival_timestamp,
             "market_vwap": market_vwap,
+            "market_vwap_unavailable_reason": (
+                vwap_result.get("unavailable_reason")
+                if market_data is not None
+                else None
+            ),
             "market_twap": market_twap,
             "price_slippage": price_slippage,
             "percentage_slippage": percentage_slippage,
@@ -311,6 +328,17 @@ class TCAEngine:
             "percentage_market_impact": percentage_market_impact,
             "total_market_impact": total_market_impact,
             "execution_quality": execution_quality,
+            "execution_quality_unavailable_reason": (
+                "Execution quality requires market VWAP, but VWAP is unavailable."
+                if execution_quality is None and market_vwap is None
+                else None
+            ),
             "execution_diagnoses": execution_diagnoses,
+            "execution_diagnoses_unavailable_reason": (
+                "VWAP-dependent diagnoses are unavailable because market VWAP is missing."
+                if execution_diagnoses is None and market_vwap is None
+                else None
+            ),
+            "execution_evidence_set": execution_evidence_set,
             "execution_recommendations": execution_recommendations,
         }
