@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import uuid
 
-from pydantic import BaseModel, Field   
+from typing import Literal
+from pydantic import BaseModel, Field
 
+
+FindingCategory = Literal[
+    "COST_ISSUE",
+    "EXECUTION_CONDITION",
+    "POSITIVE_FINDING",
+]
 
 
 class TCAMarketDataInput(BaseModel):
@@ -29,6 +36,7 @@ class TCABenchmarkResult(BaseModel):
     arrival_price: float | None = None  
     arrival_timestamp: str | None = None
     market_vwap: float | None = None
+    market_vwap_unavailable_reason: str | None = None
     market_twap: float | None = None
 
 
@@ -57,6 +65,13 @@ class TCAImplementationShortfallResult(BaseModel):
 
 
 class TCAMarketImpactResult(BaseModel):
+    measure: Literal["arrival_to_end_market_price_change"] = (
+        "arrival_to_end_market_price_change"
+    )
+    interpretation: str = (
+        "Market movement during the execution window; "
+        "this does not establish causal market impact from the order."
+    )
     end_market_price: float | None = None
     market_impact_timestamp: str | None = None
     impact_per_share: float | None = None
@@ -101,6 +116,28 @@ class TCAExecutionRecommendationsResult(BaseModel):
     recommendations: list[TCAExecutionRecommendationItem]
 
 
+class TCAExecutionFinding(BaseModel):
+    code: str   
+    category: FindingCategory
+    severity: str
+    message: str
+    evidence: dict[str, float | str] = Field(
+        default_factory=dict
+    )
+
+class TCAExecutionEvidenceSet(BaseModel):
+    overall_status: str
+    cost_issues: list[TCAExecutionFinding] = Field(
+        default_factory=list
+    )
+    execution_conditions: list[TCAExecutionFinding] = Field(
+        default_factory=list
+    )
+    positive_findings: list[TCAExecutionFinding] = Field(
+        default_factory=list
+    )
+
+
 class TCAResponse(BaseModel):
     order: TCAOrderResult
     benchmarks: TCABenchmarkResult
@@ -109,6 +146,9 @@ class TCAResponse(BaseModel):
     implementation_shortfall: TCAImplementationShortfallResult
     market_impact: TCAMarketImpactResult
     execution_quality: TCAExecutionQualityResult | None = None
+    execution_quality_unavailable_reason: str | None = None
     execution_diagnoses: TCAExecutionDiagnosesResult | None = None
+    execution_diagnoses_unavailable_reason: str | None = None
     execution_recommendations: list[TCAExecutionRecommendationItem] = Field(default_factory=list)
+    execution_evidence_set: TCAExecutionEvidenceSet | None = None
     is_fully_filled: bool

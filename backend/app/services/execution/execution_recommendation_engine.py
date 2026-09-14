@@ -71,51 +71,61 @@ class ExecutionRecommendationEngine:
     }
 
 
+    
     def generate_recommendations(
         self,
         *,
-        execution_diagnoses: dict,
+        execution_evidence_set: dict,
     ) -> list[dict]:
-        """
-        Convert diagnosis records into deterministic recommendations.
-
-        Unknown diagnosis codes are ignored so new diagnosis types do not 
-        break the TCA response.
-        """
-
-        if not execution_diagnoses:
+        """Generate recommendations from categorized evidence findings."""
+        if not isinstance(execution_evidence_set, dict):
             return []
 
-        diagnoses = execution_diagnoses.get("diagnoses", [])
+        categories = (
+            "cost_issues",
+            "execution_conditions",
+            "positive_findings",
+        )
 
         recommendations: list[dict] = []
 
-        for diagnosis in diagnoses:
-            diagnosis_code = diagnosis.get("code")
+        for category in categories:
+            findings = execution_evidence_set.get(category, [])
 
-            if diagnosis_code == "GOOD_EXECUTION":
+            if not isinstance(findings, list):
                 continue
 
-            rule = self._RULES.get(diagnosis_code)
+            for finding in findings:
+                if not isinstance(finding, dict):
+                    continue
 
-            if rule is None:
-                continue
+                diagnosis_code = finding.get("code")
+                if not isinstance(diagnosis_code, str):
+                    continue
 
-            recommendations.append(
-                {
-                    "diagnosis_code": diagnosis_code,
-                    "severity": diagnosis.get("severity", "INFO"),
-                    "priority": self._priority_for_severity(
-                        diagnosis.get("severity", "INFO")
-                    ),
-                    "title": rule["title"],
-                    "rationale": rule["rationale"],
-                    "suggested_actions": list(rule["suggested_actions"]),
-                }
-            )
+                if diagnosis_code == "GOOD_EXECUTION":
+                    continue
+
+                rule = self._RULES.get(diagnosis_code)
+                if rule is None:
+                    continue
+
+                severity = finding.get("severity", "INFO")
+
+                recommendations.append(
+                    {
+                        "diagnosis_code": diagnosis_code,
+                        "severity": severity,
+                        "priority": self._priority_for_severity(severity),
+                        "title": rule["title"],
+                        "rationale": rule["rationale"],
+                        "suggested_actions": list(
+                            rule["suggested_actions"]
+                        ),
+                    }
+                )
 
         return recommendations
-
 
 
     @staticmethod

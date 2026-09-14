@@ -370,6 +370,7 @@ def calculate_execution_tca(
             "arrival_price": result["arrival_price"],
             "arrival_timestamp": result["arrival_timestamp"],
             "market_vwap": result["market_vwap"],
+            "market_vwap_unavailable_reason": result["market_vwap_unavailable_reason"],
             "market_twap": result["market_twap"],
         },
         "execution": {
@@ -393,6 +394,11 @@ def calculate_execution_tca(
             "total_shortfall": result["total_shortfall"],
         },
         "market_impact": {
+            "measure": "arrival_to_end_market_price_change",
+            "interpretation": (
+                "Market movement during the execution window; "
+                "this does not establish causal market impact from the order."
+            ),
             "end_market_price": result["end_market_price"],
             "market_impact_timestamp": result["market_impact_timestamp"],
             "impact_per_share": result["market_impact_per_share"],
@@ -400,7 +406,10 @@ def calculate_execution_tca(
             "total": result["total_market_impact"],
         },
         "execution_quality": result["execution_quality"],
+        "execution_quality_unavailable_reason": result.get("execution_quality_unavailable_reason"),
         "execution_diagnoses": result["execution_diagnoses"],
+        "execution_diagnoses_unavailable_reason": result.get("execution_diagnoses_unavailable_reason"),
+        "execution_evidence_set": result["execution_evidence_set"],
         "execution_recommendations": result["execution_recommendations"],
         "is_fully_filled": result["is_fully_filled"],
     }

@@ -102,7 +102,7 @@ class ExecutionOrderRepository:
             select(ExecutionOrder).where(
                 ExecutionOrder.id == order_id,
                 ExecutionOrder.organization_id == organization_id,
-                ExecutionOrder.project_id == ExecutionOrder.project_id,
+                ExecutionOrder.project_id == project_id,
             ).with_for_update()
         )
 
@@ -215,7 +215,7 @@ class ExecutionOrderRepository:
         order.status = status
         order.completed_at = completed_at
 
-        self.db.flush()
+        self.db.commit()
         self.db.refresh(order)
 
         return order
