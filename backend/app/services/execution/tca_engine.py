@@ -159,6 +159,80 @@ class TCAEngine:
                 max(fill.executed_at for fill in fills)
             )
 
+            #Require market data for this symbol to extend through the latest fill timestamp. Do not calculate TCA using stale data.
+            normalized_market_data = self.benchmark_engine._normalize_market_data(market_data)
+
+            timestamp_column = self.benchmark_engine._resolve_column(
+                normalized_market_data,
+                self.benchmark_engine.TIMESTAMP_COLUMNS,
+            )
+
+            price_column = self.benchmark_engine._resolve_column(
+                normalized_market_data,
+                self.benchmark_engine.PRICE_COLUMNS,
+            )
+
+            symbol_column = self.benchmark_engine._resolve_optional_column(
+                normalized_market_data,
+                self.benchmark_engine.SYMBOL_COLUMNS,
+            )
+
+            normalized_market_data[timestamp_column] = pd.to_datetime(
+                normalized_market_data[timestamp_column],
+                utc=True,
+                errors="coerce",
+            )
+
+            normalized_market_data[price_column] = pd.to_numeric(
+                normalized_market_data[price_column],
+                errors="coerce",
+            )
+
+            valid_market_data = normalized_market_data.dropna(
+                subset=[timestamp_column, price_column]
+            )
+
+            valid_market_data = valid_market_data[
+                valid_market_data[price_column] > 0
+            ]
+
+            if symbol_column is not None:
+                valid_market_data = valid_market_data[
+                    valid_market_data[symbol_column]
+                    .astype(str)
+                    .str.upper()
+                    == order.symbol.upper()
+                ]
+
+            if valid_market_data.empty:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        f"No valid market data found for symbol {order.symbol}."
+                    ),
+                )
+
+            latest_market_timestamp = valid_market_data[timestamp_column].max()
+            required_market_timestamp = pd.Timestamp(end_timestamp)
+
+            if required_market_timestamp.tzinfo is None:
+                required_market_timestamp = required_market_timestamp.tz_localize("UTC")
+
+            else:
+                required_market_timestamp = required_market_timestamp.tz_convert("UTC")
+
+            if latest_market_timestamp < required_market_timestamp:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        "Market data does not cover the latest fill timestamp. "
+                        "Latest market observation: "
+                        f"{latest_market_timestamp.isoformat()}; "
+                        "latest fill: "
+                        f"{required_market_timestamp.isoformat()}"
+                    )
+                )
+
             end_market_result = self.benchmark_engine.calculate_end_market_price(
                 order_symbol=order.symbol,
                 market_data=market_data,

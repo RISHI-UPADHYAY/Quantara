@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ExecutionOrderCreateRequest(BaseModel):
@@ -24,6 +24,7 @@ class ExecutionOrderCreateRequest(BaseModel):
     side: Literal["buy", "sell"]
     quantity: float = Field(
         gt=0,
+        allow_inf_nan=False,
     )
     order_type: Literal[
         "market",
@@ -34,6 +35,7 @@ class ExecutionOrderCreateRequest(BaseModel):
     limit_price: float | None = Field(
         default=None,
         ge=0,
+        allow_inf_nan=False,
     )
     strategy: str | None = Field(
         default=None,
@@ -57,6 +59,25 @@ class ExecutionOrderCreateRequest(BaseModel):
     ] = "pending"
     submitted_at: datetime
     completed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_order_timestamps(self):
+        if self.completed_at is not None:
+            submitted_at = self.submitted_at
+            completed_at = self.completed_at
+
+            #Require both timestamps to either be timezone-aware or naive
+            if (submitted_at.tzinfo is None) != (completed_at.tzinfo is None):
+                raise ValueError(
+                    "submitted_at and completed_at must both be timezone-aware or both be timezone-naive."
+                )
+
+            if completed_at < submitted_at:
+                raise ValueError(
+                    "completed_at cannot be earlier than submitted_at."
+                )
+
+        return self 
 
 
 class ExecutionOrderResponse(BaseModel):
@@ -94,9 +115,11 @@ class ExecutionFillCreateRequest(BaseModel):
     )
     price: float = Field(
         ge=0,
+        allow_inf_nan=False,
     )
     quantity: float = Field(
         gt=0,
+        allow_inf_nan=False,
     )
     venue: str | None = Field(
         default=None,
@@ -106,10 +129,12 @@ class ExecutionFillCreateRequest(BaseModel):
     commission: float | None = Field(
         default=None,
         ge=0,
+        allow_inf_nan=False,
     )
     fees: float | None = Field(
         default=None,
         ge=0,
+        allow_inf_nan=False,
     )
 
 

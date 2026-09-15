@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import math
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -40,6 +41,35 @@ class ExecutionService:
         submitted_at: datetime,
         completed_at: datetime | None,
     ) -> ExecutionOrder:
+
+        if not math.isfinite(quantity) or quantity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Order quantity must be a finite number greater than zero.",
+            )
+
+        if limit_price is not None:
+            if not math.isfinite(limit_price) or limit_price < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="Limit price must be a finite number greater than or equal to zero.",
+                )
+
+        if completed_at is not None:
+            if (submitted_at.tzinfo is None) != (completed_at.tzinfo is None):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        "submitted_at and completed_at must both be timezone-aware "
+                        "or both be timezone-naive."
+                    ),
+                )
+
+            if completed_at < submitted_at:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="completed_at cannot be earlier than submitted_at.",
+                )
 
         if external_order_id:
             existing = self.order_repository.get_by_external_order_id(
@@ -102,6 +132,48 @@ class ExecutionService:
         fees: float | None,
     ) -> ExecutionFill:
 
+        numeric_values = {
+            "price": price,
+            "quantity": quantity,
+        }
+
+        if commission is not None:
+            numeric_values["commission"] = commission
+
+        if fees is not None:
+            numeric_values["fees"] = fees
+
+        for field_name, value in numeric_values.items():
+            if not math.isfinite(value):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=f"{field_name} must be a finite number.",
+                )
+
+        if price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Fill price must be greater than zero.",
+            )
+
+        if quantity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Fill quantity must be greater than zero.",
+            )
+
+        if commission is not None and commission < 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Commission cannot be negative.",
+            )
+
+        if fees is not None and fees < 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Fees cannot be negative.",
+            ) 
+
         order = self.order_repository.get_by_id_in_project_for_update(
             order_id=order_id,
             organization_id=organization_id,
@@ -112,6 +184,21 @@ class ExecutionService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Execution order not found."
+            )
+
+        if (executed_at.tzinfo is None) != (order.submitted_at.tzinfo is None):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "executed_at and submitted_at must both be timezone-aware "
+                    "or both be timezone-naive."
+                ),
+            )
+
+        if executed_at < order.submitted_at:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Fill executed_at cannot be earlier than the order's submitted_at.",
             )
 
         if order.status in {
