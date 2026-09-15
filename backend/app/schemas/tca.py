@@ -152,6 +152,9 @@ class TCABatchOrderResult(BaseModel):
     order_id: uuid.UUID
     result: TCAResponse | None = None
     error: TCABatchOrderError | None = None
+    outlier_flags: list[TCABatchOutlierFlag] = Field(
+        default_factory=list
+    )
 
 
 class TCABatchSummary(BaseModel):
@@ -170,6 +173,14 @@ class TCABatchSummary(BaseModel):
 class TCABatchResponse(BaseModel):
     summary: TCABatchSummary
     results: list[TCABatchOrderResult]
+
+
+class TCABatchOutlierFlag(BaseModel):
+    code: str
+    metric: str
+    observed_value: float
+    threshold: float
+    reason: str
 
 
 class TCAResponse(BaseModel):

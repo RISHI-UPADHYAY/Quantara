@@ -32,6 +32,7 @@ from app.schemas.tca import (
     TCABatchOrderResult,
     TCABatchSummary,
     TCABatchResponse,
+    TCABatchOutlierFlag,
 )
 from app.services.execution import ExecutionService, TCAEngine, ExecutionMarketDataLoader
 
@@ -357,6 +358,133 @@ def _build_tca_response(result: dict) -> dict:
         "is_fully_filled": result["is_fully_filled"],
     }
 
+#Quantara v1 review heuristics. Percentage values are expressed in percentage points (e.g. 0.10 means 0.10% not 10%).
+BATCH_OUTLIER_THRESHOLDS = {
+    "slippage_percentage": 0.10,
+    "vwap_deviation_percentage": 0.10,
+    "shortfall_percentage": 0.15,
+    "explicit_cost_percentage": 0.05,
+}
+
+def _build_batch_outlier_flags(
+    response_data: dict,
+) -> list[TCABatchOutlierFlag]:
+
+    flags: list[TCABatchOutlierFlag] = []
+
+    order = response_data["order"]
+    benchmarks = response_data["benchmarks"]
+    execution = response_data["execution"]
+    slippage = response_data["slippage"]
+    shortfall = response_data["implementation_shortfall"]
+
+    def add_flag(
+        code: str,
+        metric: str,
+        observerd_value: float,
+        threshold: float,
+        reason: str,
+    ) -> None:
+        flags.append(
+            TCABatchOutlierFlag(
+                code=code,
+                metric=metric,
+                observed_value=observerd_value,
+                threshold=threshold,
+                reason=reason,
+            )
+        )
+
+    #Slippage is already side-aware in the TCA result.
+    slippage_pct = slippage["percentage"]
+    threshold = BATCH_OUTLIER_THRESHOLDS["slippage_percentage"]
+
+    if slippage_pct is not None and slippage_pct > threshold:
+        add_flag(
+            code="HIGH_SLIPPAGE",
+            metric="slippage_percentage",
+            observerd_value=slippage_pct,
+            threshold=threshold,
+            reason=(
+                f"Adverse slippage of {slippage_pct:.4f}% exceeds "
+                f"the v1 review threshold of {threshold:.4f}%."
+            ),
+        )
+
+    #Comapare execution VWAP with market VWAP, accounting for side.
+    market_vwap = benchmarks["market_vwap"]
+    execution_vwap = execution["execution_vwap"]
+    side = order["side"].lower()
+
+    if (
+        market_vwap is not None
+        and market_vwap > 0
+        and execution_vwap is not None
+        and side in {"buy", "sell"}
+    ):
+        direction = 1 if side == "buy" else -1
+        vwap_deviation_pct = (
+            direction
+            * (execution_vwap - market_vwap)
+            / market_vwap
+            * 100
+        )
+
+        threshold = BATCH_OUTLIER_THRESHOLDS["vwap_deviation_percentage"]
+
+        if vwap_deviation_pct > threshold:
+            add_flag(
+                code="WORSE_THAN_MARKET_VWAP",
+                metric="vwap_deviation_percentage",
+                observerd_value=vwap_deviation_pct,
+                threshold=threshold,
+                reason=(
+                    f"Execution was {vwap_deviation_pct:.4f}% worse "
+                    f"than market VWAP, exceeding the v1 review "
+                    f"threshold of {threshold:.4f}%."
+                ),
+            )
+
+    shortfall_pct = shortfall["percentage_shortfall"]
+    threshold = BATCH_OUTLIER_THRESHOLDS["shortfall_percentage"]
+
+    if shortfall_pct is not None and shortfall_pct > threshold:
+        add_flag(
+            code="HIGH_IMPLEMENTATION_SHORTFALL",
+            metric="shortfall_percentage",
+            observerd_value=shortfall_pct,
+            threshold=threshold,
+            reason=(
+                f"Implementation shortfall of {shortfall_pct:.4f}% "
+                f"exceeds the v1 review threshold of "
+                f"{threshold:.4f}%."
+            ),
+        )
+
+    gross_notional = execution["gross_notional"]
+    commission = execution["commission"] or 0.0
+    fees = execution["fees"] or 0.0
+    explicit_costs = commission + fees
+
+    if gross_notional is not None and gross_notional > 0:
+        explicit_cost_pct = explicit_costs / gross_notional * 100
+        threshold = BATCH_OUTLIER_THRESHOLDS["explicit_cost_percentage"]
+
+        if explicit_cost_pct > threshold:
+            add_flag(
+                code="HIGH_EXPLICIT_COSTS",
+                metric="explicit_cost_percentage",
+                observerd_value=explicit_cost_pct,
+                threshold=threshold,
+                reason=(
+                    f"Explicit costs of {explicit_cost_pct:.4f}% of "
+                    f"gross notional exceed the v1 review threshold "
+                    f"of {threshold:.4f}%."
+                ),
+            )
+
+    return flags
+
 
 @router.post(
     "/{organization_id}/projects/{project_id}/execution/orders/{order_id}/tca",
@@ -523,12 +651,14 @@ def calculate_execution_tca_batch(
             )
 
             response_data = _build_tca_response(result)
+            outlier_flags = _build_batch_outlier_flags(response_data)
 
             results.append(
                 TCABatchOrderResult(
                     order_id=order_id,
                     result=response_data,
                     error=None,
+                    outlier_flags=outlier_flags,
                 )
             )
 
