@@ -170,6 +170,10 @@ class TCABatchSummary(BaseModel):
     fully_filled: int
     partially_filled: int
 
+    orders_with_outliers: int
+    total_outlier_flags: int
+    outlier_counts_by_code: dict[str, int]
+
 class TCABatchResponse(BaseModel):
     summary: TCABatchSummary
     results: list[TCABatchOrderResult]

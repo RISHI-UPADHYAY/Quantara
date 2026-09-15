@@ -641,6 +641,10 @@ def calculate_execution_tca_batch(
     fully_filled = 0
     partially_filled = 0
 
+    orders_with_outliers = 0
+    total_outlier_flags = 0
+    outlier_counts_by_code: dict[str, int] = {}
+
     for order_id in request.order_ids:
         try:
             result = engine.calculate_execution_statistics(
@@ -652,6 +656,16 @@ def calculate_execution_tca_batch(
 
             response_data = _build_tca_response(result)
             outlier_flags = _build_batch_outlier_flags(response_data)
+
+            if outlier_flags:
+                orders_with_outliers += 1
+
+            total_outlier_flags += len(outlier_flags)
+
+            for flag in outlier_flags:
+                outlier_counts_by_code[flag.code] = (
+                    outlier_counts_by_code.get(flag.code, 0) + 1
+                ) 
 
             results.append(
                 TCABatchOrderResult(
@@ -702,6 +716,9 @@ def calculate_execution_tca_batch(
             total_explicit_costs=total_explicit_costs,
             fully_filled=fully_filled,
             partially_filled=partially_filled,
+            orders_with_outliers=orders_with_outliers,
+            total_outlier_flags=total_outlier_flags,
+            outlier_counts_by_code=outlier_counts_by_code,
         ),
         results=results,
     )
