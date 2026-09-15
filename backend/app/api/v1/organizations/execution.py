@@ -505,6 +505,14 @@ def calculate_execution_tca_batch(
     succeeded = 0
     failed = 0
 
+    total_ordered_quantity = 0.0
+    total_executed_quantity = 0.0
+    total_gross_notional = 0.0
+    total_explicit_costs = 0.0
+
+    fully_filled = 0
+    partially_filled = 0
+
     for order_id in request.order_ids:
         try:
             result = engine.calculate_execution_statistics(
@@ -514,14 +522,30 @@ def calculate_execution_tca_batch(
                 market_data=market_data,
             )
 
+            response_data = _build_tca_response(result)
+
             results.append(
                 TCABatchOrderResult(
                     order_id=order_id,
-                    result=_build_tca_response(result),
+                    result=response_data,
+                    error=None,
                 )
             )
 
             succeeded += 1
+
+            total_ordered_quantity += response_data["order"]["ordered_quantity"]
+            total_executed_quantity += response_data["order"]["executed_quantity"]
+            total_gross_notional += response_data["execution"]["gross_notional"]
+            total_explicit_costs += (
+                response_data["execution"]["commission"] + response_data["execution"]["fees"]
+            )
+
+            if response_data["is_fully_filled"]:
+                fully_filled += 1
+
+            elif response_data["order"]["executed_quantity"] > 0:
+                partially_filled += 1
 
         except HTTPException as exc:
             #Expected per-order errors (e.g. order not found or no fills)
@@ -542,6 +566,12 @@ def calculate_execution_tca_batch(
             requested=len(request.order_ids),
             succeeded=succeeded,
             failed=failed,
+            total_ordered_quantity=total_ordered_quantity,
+            total_executed_quantity=total_executed_quantity,
+            total_gross_notional=total_gross_notional,
+            total_explicit_costs=total_explicit_costs,
+            fully_filled=fully_filled,
+            partially_filled=partially_filled,
         ),
         results=results,
     )

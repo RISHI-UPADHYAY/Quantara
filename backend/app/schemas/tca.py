@@ -159,6 +159,14 @@ class TCABatchSummary(BaseModel):
     succeeded: int
     failed: int
 
+    total_ordered_quantity: float
+    total_executed_quantity: float
+    total_gross_notional: float
+    total_explicit_costs: float
+
+    fully_filled: int
+    partially_filled: int
+
 class TCABatchResponse(BaseModel):
     summary: TCABatchSummary
     results: list[TCABatchOrderResult]
