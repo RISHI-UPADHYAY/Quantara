@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import csv
+import json
+
 import uuid
 from datetime import datetime, timezone
+
+from io import StringIO
 
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.dependencies.auth import get_db
@@ -681,9 +687,9 @@ def calculate_execution_tca_batch(
             total_ordered_quantity += response_data["order"]["ordered_quantity"]
             total_executed_quantity += response_data["order"]["executed_quantity"]
             total_gross_notional += response_data["execution"]["gross_notional"]
-            total_explicit_costs += (
-                response_data["execution"]["commission"] + response_data["execution"]["fees"]
-            )
+            commission = response_data["execution"]["commission"] or 0.0
+            fees = response_data["execution"]["fees"] or 0.0
+            total_explicit_costs += commission + fees
 
             if response_data["is_fully_filled"]:
                 fully_filled += 1
@@ -721,4 +727,182 @@ def calculate_execution_tca_batch(
             outlier_counts_by_code=outlier_counts_by_code,
         ),
         results=results,
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/tca/batch/export",
+    status_code=status.HTTP_200_OK,
+)
+def export_execution_tca_batch_csv(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    request: TCABatchRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    batch_response = calculate_execution_tca_batch(
+        organization_id=organization_id,
+        project_id=project_id,
+        request=request,
+        membership=membership,
+        db=db,
+    )
+
+    #The batch response is a Pydantic model.
+    if hasattr(batch_response, "model_dump"):
+        batch_data = batch_response.model_dump(mode="json")
+
+    else:
+        batch_data = batch_response.dict()
+
+    output = StringIO()
+    writer = csv.writer(output)
+
+    headers = [
+        "order_id",
+        "status",
+        "error_status_code",
+        "error_detail",
+        "symbol",
+        "side",
+        "ordered_quantity",
+        "executed_quantity",
+        "remaining_quantity",
+        "fill_count",
+        "arrival_price",
+        "arrival_timestamp",
+        "market_vwap",
+        "market_vwap_unavailable_reason",
+        "market_twap",
+        "average_execution_price",
+        "execution_vwap",
+        "gross_notional",
+        "commission",
+        "fees",
+        "cost_per_share",
+        "net_execution_cost",
+        "slippage_price",
+        "slippage_percentage",
+        "total_slippage",
+        "price_shortfall",
+        "percentage_shortfall",
+        "explicit_costs",
+        "total_shortfall",
+        "end_market_price",
+        "market_impact_timestamp",
+        "impact_per_share",
+        "market_impact_percentage",
+        "total_market_impact",
+        "execution_quality",
+        "execution_diagnoses",
+        "execution_evidence_set",
+        "execution_recommendations",
+        "outlier_flags",
+        "outlier_count",
+        "is_fully_filled",
+    ]
+    writer.writerow(headers)
+
+    def json_cell(value):
+        """Keep nested objects in a single CSV cell."""
+        if value is None:
+            return ""
+
+        return json.dumps(value, ensure_ascii=False)
+
+    def safe_cell(value):
+        """
+        Reduce spreadsheet formula-injection risk for text cells.
+        Numeric values remain numeric.
+        """
+
+        if isinstance(value, str) and value.startswith(("=", "+", "-", "@", "\t", "\r")):
+            return "'" + value
+
+        return value
+
+    for item in batch_data["results"]:
+        result = item.get("result")
+        error = item.get("error")
+
+        if result is None:
+            writer.writerow([
+                safe_cell(str(item.get("order_id", ""))),
+                "failed",
+                error.get("status_code", "") if error else "",
+                safe_cell(error.get("detail", "") if error else ""),
+                *([""] * (len(headers) - 4)),
+            ])
+
+            continue
+
+        order = result.get("order", {})
+        benchmarks = result.get("benchmarks", {})
+        execution = result.get("execution", {})
+        slippage = result.get("slippage", {})
+        shortfall = result.get("implementation_shortfall", {})
+        market_impact = result.get("market_impact", {})
+
+        outlier_flags = item.get("outlier_flags") or []
+
+        writer.writerow([
+            safe_cell(str(item.get("order_id", ""))),
+            "succeeded",
+            "",
+            "",
+            safe_cell(order.get("symbol", "")),
+            safe_cell(order.get("side", "")),
+            order.get("ordered_quantity", ""),
+            order.get("executed_quantity", ""),
+            order.get("remaining_quantity", ""),
+            order.get("fill_count", ""),
+            benchmarks.get("arrival_price", ""),
+            benchmarks.get("arrival_timestamp", ""),
+            benchmarks.get("market_vwap", ""),
+            safe_cell(benchmarks.get("market_vwap_unavailable_reason") or ""),
+            benchmarks.get("market_twap", ""),
+            execution.get("average_execution_price", ""),
+            execution.get("execution_vwap", ""),
+            execution.get("gross_notional", ""),
+            execution.get("commission", ""),
+            execution.get("fees", ""),
+            execution.get("cost_per_share", ""),
+            execution.get("net_execution_cost", ""),
+            slippage.get("price", ""),
+            slippage.get("percentage", ""),
+            slippage.get("total", ""),
+            shortfall.get("price_shortfall", ""),
+            shortfall.get("percentage_shortfall", ""),
+            shortfall.get("explicit_costs", ""),
+            shortfall.get("total_shortfall", ""),
+            market_impact.get("end_market_price", ""),
+            market_impact.get("market_impact_timestamp", ""),
+            market_impact.get("impact_per_share", ""),
+            market_impact.get("percentage", ""),
+            market_impact.get("total", ""),
+            json_cell(result.get("execution_quality")),
+            json_cell(result.get("execution_diagnoses")),
+            json_cell(result.get("execution_evidence_set")),
+            json_cell(result.get("execution_recommendations")),
+            json_cell(outlier_flags),
+            len(outlier_flags),
+            result.get("is_fully_filled", ""),
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="quantara_batch_tca.csv"'
+            )
+        },
     )
