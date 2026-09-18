@@ -160,7 +160,7 @@ class TCAPreflightOrderResult(BaseModel):
     order_id: uuid.UUID
     status: PreflightStatus
     findings: list[TCAPreflightFinding] = Field(
-        default_factory=dict
+        default_factory=list
     )
 
 class TCAPreflightSummary(BaseModel):
