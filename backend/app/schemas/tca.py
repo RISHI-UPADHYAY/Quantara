@@ -232,3 +232,66 @@ class TCAResponse(BaseModel):
     execution_recommendations: list[TCAExecutionRecommendationItem] = Field(default_factory=list)
     execution_evidence_set: TCAExecutionEvidenceSet | None = None
     is_fully_filled: bool
+
+
+class ExecutionReviewIssue(BaseModel):
+    code: str
+    severity: Literal["MEDIUM", "HIGH", "CRITICAL"]
+    metric: str
+    observed_value: float
+    threshold: float | None = None
+    message: str
+    evidence: dict[str, float] = Field(
+        default_factory=dict
+    )
+    recommendations: list[str] = Field(
+        default_factory=list
+    )
+
+
+class ExecutionReviewItem(BaseModel):
+    order_id: uuid.UUID
+    symbol: str
+    side: str
+
+    ordered_quantity: float
+    executed_quantity: float
+
+    gross_notional: float
+    total_shortfall: float | None = None
+    explicit_costs: float
+
+    overall_status: str
+
+    issues: list[ExecutionReviewIssue] = Field(
+        default_factory=list
+    )
+
+
+class ExecutionReviewSummary(BaseModel):
+    requested: int
+    analyzed: int
+    failed: int
+
+    orders_requiring_attention: int
+
+    orders_by_severity: dict[str, int] = Field(
+        default_factory=dict
+    )
+
+    total_issues: int
+
+    issues_by_severity: dict[str, int] = Field(
+        default_factory=dict
+    )
+
+    issue_counts_by_code: dict[str, int] = Field(
+        default_factory=dict
+    )
+
+
+class ExecutionReviewResponse(BaseModel):
+    summary: ExecutionReviewSummary
+    items: list[ExecutionReviewItem] = Field(
+        default_factory=list
+    )

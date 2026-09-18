@@ -41,8 +41,17 @@ from app.schemas.tca import (
     TCABatchOutlierFlag,
     TCAPreflightResponse,
     TCAPreflightSummary,
+    ExecutionReviewIssue,
+    ExecutionReviewItem,
+    ExecutionReviewSummary,
+    ExecutionReviewResponse,
 )
-from app.services.execution import ExecutionService, TCAEngine, ExecutionMarketDataLoader
+from app.services.execution import (
+    ExecutionService, 
+    TCAEngine, 
+    ExecutionMarketDataLoader, 
+    ExecutionReviewService,
+)
 from app.services.execution.tca_preflight import TCAPreflightService
 
 
@@ -390,7 +399,7 @@ def _build_batch_outlier_flags(
     def add_flag(
         code: str,
         metric: str,
-        observerd_value: float,
+        observed_value: float,
         threshold: float,
         reason: str,
     ) -> None:
@@ -398,7 +407,7 @@ def _build_batch_outlier_flags(
             TCABatchOutlierFlag(
                 code=code,
                 metric=metric,
-                observed_value=observerd_value,
+                observed_value=observed_value,
                 threshold=threshold,
                 reason=reason,
             )
@@ -412,7 +421,7 @@ def _build_batch_outlier_flags(
         add_flag(
             code="HIGH_SLIPPAGE",
             metric="slippage_percentage",
-            observerd_value=slippage_pct,
+            observed_value=slippage_pct,
             threshold=threshold,
             reason=(
                 f"Adverse slippage of {slippage_pct:.4f}% exceeds "
@@ -445,7 +454,7 @@ def _build_batch_outlier_flags(
             add_flag(
                 code="WORSE_THAN_MARKET_VWAP",
                 metric="vwap_deviation_percentage",
-                observerd_value=vwap_deviation_pct,
+                observed_value=vwap_deviation_pct,
                 threshold=threshold,
                 reason=(
                     f"Execution was {vwap_deviation_pct:.4f}% worse "
@@ -461,7 +470,7 @@ def _build_batch_outlier_flags(
         add_flag(
             code="HIGH_IMPLEMENTATION_SHORTFALL",
             metric="shortfall_percentage",
-            observerd_value=shortfall_pct,
+            observed_value=shortfall_pct,
             threshold=threshold,
             reason=(
                 f"Implementation shortfall of {shortfall_pct:.4f}% "
@@ -483,7 +492,7 @@ def _build_batch_outlier_flags(
             add_flag(
                 code="HIGH_EXPLICIT_COSTS",
                 metric="explicit_cost_percentage",
-                observerd_value=explicit_cost_pct,
+                observed_value=explicit_cost_pct,
                 threshold=threshold,
                 reason=(
                     f"Explicit costs of {explicit_cost_pct:.4f}% of "
@@ -1009,4 +1018,37 @@ def preflight_execution_tca_batch(
             ),
         ),
         results=results,
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/tca/batch/review",
+    response_model=ExecutionReviewResponse,
+    status_code=status.HTTP_200_OK,
+)
+def review_execution_tca_batch(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    request: TCABatchRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    batch_response = calculate_execution_tca_batch(
+        organization_id=organization_id,
+        project_id=project_id,
+        request=request,
+        membership=membership,
+        db=db,
+    )
+
+    review_service = ExecutionReviewService()
+
+    return review_service.build_review_queue(
+        batch_response=batch_response,
     )
