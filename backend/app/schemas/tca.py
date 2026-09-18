@@ -12,6 +12,10 @@ FindingCategory = Literal[
     "POSITIVE_FINDING",
 ]
 
+PreflightSeverity = Literal["ERROR", "WARNING", "INFO"]
+
+PreflightStatus = Literal["READY", "READY_WITH_WARNINGS", "BLOCKED"]
+
 
 class TCAMarketDataInput(BaseModel):
     dataset_id: uuid.UUID
@@ -143,6 +147,33 @@ class TCABatchRequest(BaseModel):
         min_length=1,
         max_length=100
     )
+
+class TCAPreflightFinding(BaseModel):
+    code: str
+    severity: PreflightSeverity
+    message: str
+    evidence: dict[str, str | int | float | bool] = Field(
+        default_factory=dict
+    )
+
+class TCAPreflightOrderResult(BaseModel):
+    order_id: uuid.UUID
+    status: PreflightStatus
+    findings: list[TCAPreflightFinding] = Field(
+        default_factory=dict
+    )
+
+class TCAPreflightSummary(BaseModel):
+    requested: int
+    ready: int 
+    ready_with_warnings: int
+    blocked: int
+    total_errors: int
+    total_warnings: int
+
+class TCAPreflightResponse(BaseModel):
+    summary: TCAPreflightSummary
+    results: list[TCAPreflightOrderResult]
 
 class TCABatchOrderError(BaseModel):
     status_code: int

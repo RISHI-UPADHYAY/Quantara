@@ -39,8 +39,11 @@ from app.schemas.tca import (
     TCABatchSummary,
     TCABatchResponse,
     TCABatchOutlierFlag,
+    TCAPreflightResponse,
+    TCAPreflightSummary,
 )
 from app.services.execution import ExecutionService, TCAEngine, ExecutionMarketDataLoader
+from app.services.execution.tca_preflight import TCAPreflightService
 
 
 router = APIRouter()
@@ -905,4 +908,105 @@ def export_execution_tca_batch_csv(
                 'attachment; filename="quantara_batch_tca.csv"'
             )
         },
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/tca/batch/preflight",
+    response_model=TCAPreflightResponse,
+    status_code=status.HTTP_200_OK,
+)
+def preflight_execution_tca_batch(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    request: TCABatchRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    
+
+    if len(request.order_ids) != len(set(request.order_ids)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="order_ids must not contain duplicates.",
+        )
+
+    dataset_repository = DatasetRepository(db)
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset = dataset_repository.get_by_id_in_project(
+        dataset_id=request.market_data.dataset_id,
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset not found.",
+        )
+
+    dataset_version = dataset_version_repository.get_by_id_for_dataset(
+        dataset_version_id=request.market_data.dataset_version_id,
+        dataset_id=dataset.id,
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset version not found.",
+        )
+
+    if dataset_version.storage_uri is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Market-data dataset version has no storage URI.",
+        )
+
+    market_data = ExecutionMarketDataLoader(
+        storage_root=Path(__file__).resolve().parents[4] / "storage",
+    ).load(dataset_version.storage_uri)
+
+    service = TCAPreflightService(
+        order_repository=ExecutionOrderRepository(db),
+        fill_repository=ExecutionFillRepository(db),
+    )
+
+    results = [
+        service.check_order(
+            organization_id=organization_id,
+            project_id=project_id,
+            order_id=order_id,
+            market_data=market_data,
+        )
+        for order_id in request.order_ids
+    ]
+
+    return TCAPreflightResponse(
+        summary=TCAPreflightSummary(
+            requested=len(results),
+            ready=sum(r.status == "READY" for r in results),
+            ready_with_warnings=sum(
+                r.status == "READY_WITH_WARNINGS" for r in results
+            ),
+            blocked=sum(
+                r.status == "BLOCKED" for r in results
+            ),
+            total_errors=sum(
+                f.severity == "ERROR"
+                for r in results
+                for f in r.findings
+            ),
+            total_warnings=sum(
+                f.severity == "WARNING"
+                for r in results
+                for f in r.findings
+            ),
+        ),
+        results=results,
     )
