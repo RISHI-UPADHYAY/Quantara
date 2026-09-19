@@ -154,7 +154,7 @@ class ExecutionOrder(Base):
     )
 
     review_issues: Mapped[list["ExecutionReviewIssue"]] = relationship(
-        "ExexcutionReviewIssue",
+        "ExecutionReviewIssue",
         back_populates="order",
         cascade="all, delete-orphan",
         order_by="ExecutionReviewIssue.created_at",

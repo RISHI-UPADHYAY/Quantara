@@ -41,9 +41,6 @@ from app.schemas.tca import (
     TCABatchOutlierFlag,
     TCAPreflightResponse,
     TCAPreflightSummary,
-    ExecutionReviewIssue,
-    ExecutionReviewItem,
-    ExecutionReviewSummary,
     ExecutionReviewResponse,
 )
 from app.services.execution import (
@@ -53,6 +50,7 @@ from app.services.execution import (
     ExecutionReviewService,
 )
 from app.services.execution.tca_preflight import TCAPreflightService
+from app.services.execution.execution_review_persistence_service import ExecutionReviewPersistenceService
 
 
 router = APIRouter()
@@ -1049,6 +1047,20 @@ def review_execution_tca_batch(
 
     review_service = ExecutionReviewService()
 
-    return review_service.build_review_queue(
-        batch_response=batch_response,
+    review_response = (
+        review_service.build_review_queue(
+            batch_response=batch_response,
+        )
     )
+
+    persistence_service = ExecutionReviewPersistenceService(db)
+
+    persistence_service.sync_review_queue(
+        organization_id=organization_id,
+        project_id=project_id,
+        dataset_id=request.market_data.dataset_id,
+        dataset_version_id=request.market_data.dataset_version_id,
+        items=review_response.items,
+    )
+
+    return review_response
