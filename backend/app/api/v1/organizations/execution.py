@@ -26,6 +26,7 @@ from app.models.organization_member import OrganizationMember
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
 from app.repositories.execution_review_issue_repository import ExecutionReviewIssueRepository
+from app.repositories.execution_review_activity_repository import ExecutionReviewActivityRepository
 from app.schemas.execution import (
     ExecutionFillCreateRequest,
     ExecutionFillResponse,
@@ -48,6 +49,9 @@ from app.schemas.tca import (
     ExecutionReviewQueueItem,
     ExecutionReviewUpdateRequest,
     ExecutionReviewInvestigationResponse,
+    ExecutionReviewCommentCreateRequest,
+    ExecutionReviewCommentListResponse,
+    ExecutionReviewCommentResponse,
 )
 from app.services.execution import (
     ExecutionService, 
@@ -1420,4 +1424,124 @@ def get_execution_review_investigation(
             for fill in fills
         ],
         tca=tca_response,
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/review/{issue_id}/comments",
+    response_model=ExecutionReviewCommentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_execution_review_comment(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    payload: ExecutionReviewCommentCreateRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    review_repository = ExecutionReviewIssueRepository(db)
+
+    issue = review_repository.get_by_id(
+        organization_id=organization_id,
+        project_id=project_id,
+        issue_id=issue_id,
+    )
+
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution review issue not found.",
+        )
+
+    activity_repository = ExecutionReviewActivityRepository(db)
+
+    activity = activity_repository.create_comment(
+        organization_id=organization_id,
+        project_id=project_id,
+        review_issue_id=issue_id,
+        author_id=membership.user_id,
+        comment=payload.comment.strip(),
+    )
+
+    try:
+        db.commit()
+        db.refresh(activity)
+
+    except Exception: 
+        db.rollback()
+        raise
+
+    return ExecutionReviewCommentResponse.from_activity(activity)
+
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/execution/review/{issue_id}/comments",
+    response_model=ExecutionReviewCommentListResponse,
+    status_code=status.HTTP_200_OK,
+)
+def list_execution_review_comment(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=500,
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    review_repository = ExecutionReviewIssueRepository(db)
+
+    issue = review_repository.get_by_id(
+        organization_id=organization_id,
+        project_id=project_id,
+        issue_id=issue_id,
+    )
+
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution review issue not found.",
+        )
+
+    activity_repository = ExecutionReviewActivityRepository(db)
+
+    items = activity_repository.list_for_issue(
+        organization_id=organization_id,
+        project_id=project_id,
+        review_issue_id=issue_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    total = activity_repository.count_for_issue(
+        organization_id=organization_id,
+        project_id=project_id,
+        review_issue_id=issue_id,
+    )
+
+    return ExecutionReviewCommentListResponse(
+        items=[
+            ExecutionReviewCommentResponse.from_activity(item)
+            for item in items
+        ],
+        total=total,
     )

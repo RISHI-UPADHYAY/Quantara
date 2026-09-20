@@ -184,3 +184,10 @@ class ExecutionReviewIssue(Base):
         "ExecutionOrder",
         back_populates="review_issues",
     )
+
+    activities: Mapped[list["ExecutionReviewActivity"]] = relationship(
+        "ExecutionReviewActivity",
+        back_populates="review_issue",
+        cascade="all, delete-orphan",
+        order_by="ExecutionReviewActivity.created_at",
+    )

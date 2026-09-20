@@ -357,3 +357,39 @@ class ExecutionReviewInvestigationResponse(BaseModel):
     fills: list[ExecutionFillResponse]
 
     tca: TCAResponse
+
+
+class ExecutionReviewCommentCreateRequest(BaseModel):
+    comment: str = Field(
+        min_length=1,
+        max_length=5000,
+    )
+
+
+class ExecutionReviewCommentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    review_issue_id: uuid.UUID
+    author_id: uuid.UUID | None
+    activity_type: str
+    comment: str | None
+    metadata: dict | None
+    created_at: datetime
+
+    @classmethod
+    def from_activity(cls, activity):
+        return cls(
+            id=activity.id,
+            review_issue_id=activity.review_issue_id,
+            author_id=activity.author_id,
+            activity_type=activity.activity_type,
+            comment=activity.comment,
+            metadata=activity.activity_metadata,
+            created_at=activity.created_at,
+        )
+
+
+class ExecutionReviewCommentListResponse(BaseModel):
+    items: list[ExecutionReviewCommentResponse]
+    total: int
