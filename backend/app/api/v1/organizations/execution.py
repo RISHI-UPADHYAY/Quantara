@@ -15,6 +15,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.dependencies.auth import get_db
 from app.core.permissions import ROLE_ADMIN, ROLE_ANALYST
@@ -24,6 +25,7 @@ from app.repositories.dataset_version_repository import DatasetVersionRepository
 from app.models.organization_member import OrganizationMember
 from app.repositories.execution_fill_repository import ExecutionFillRepository
 from app.repositories.execution_order_repository import ExecutionOrderRepository
+from app.repositories.execution_review_issue_repository import ExecutionReviewIssueRepository
 from app.schemas.execution import (
     ExecutionFillCreateRequest,
     ExecutionFillResponse,
@@ -42,6 +44,10 @@ from app.schemas.tca import (
     TCAPreflightResponse,
     TCAPreflightSummary,
     ExecutionReviewResponse,
+    ExecutionReviewQueueResponse,
+    ExecutionReviewQueueItem,
+    ExecutionReviewUpdateRequest,
+    ExecutionReviewInvestigationResponse,
 )
 from app.services.execution import (
     ExecutionService, 
@@ -51,6 +57,15 @@ from app.services.execution import (
 )
 from app.services.execution.tca_preflight import TCAPreflightService
 from app.services.execution.execution_review_persistence_service import ExecutionReviewPersistenceService
+
+
+ALLOWED_REVIEW_TRANSITIONS = {
+    "OPEN": {"ACKNOWLEDGED", "IN_REVIEW", "IGNORED"},
+    "ACKNOWLEDGED": {"IN_REVIEW", "RESOLVED", "IGNORED"},
+    "IN_REVIEW": {"RESOLVED", "IGNORED"},
+    "RESOLVED": set(),
+    "IGNORED": set(),
+}
 
 
 router = APIRouter()
@@ -1064,3 +1079,345 @@ def review_execution_tca_batch(
     )
 
     return review_response
+
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/execution/review",
+    response_model=ExecutionReviewQueueResponse,
+    status_code=status.HTTP_200_OK,
+)
+def list_execution_review_queue(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    status_filter: Literal[
+        "OPEN",
+        "ACKNOWLEDGED",
+        "IN_REVIEW",
+        "RESOLVED",
+        "IGNORED",
+    ] | None = Query(
+        default=None,
+        alias="status",
+    ),
+    severity: Literal[
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL",
+    ] | None = Query(
+        default=None,
+    ),
+    issue_code: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=100,
+    ),
+    order_id: uuid.UUID | None = Query(default=None),
+    assigned_to: uuid.UUID | None = Query(default=None),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=500,
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    repository = ExecutionReviewIssueRepository(db)
+
+    issues = repository.list_for_project(
+        organization_id=organization_id,
+        project_id=project_id,
+        status=status_filter,
+        severity=severity,
+        issue_code=issue_code,
+        order_id=order_id,
+        assigned_to=assigned_to,
+        limit=limit,
+        offset=offset,
+    )
+
+    total = repository.count_for_project(
+        organization_id=organization_id,
+        project_id=project_id,
+        status=status_filter,
+        severity=severity,
+        issue_code=issue_code,
+        order_id=order_id,
+        assigned_to=assigned_to,
+    )
+
+    items = [
+        ExecutionReviewQueueItem.model_validate(issue)
+        for issue in issues
+    ]
+
+    return ExecutionReviewQueueResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/execution/review/{issue_id}",
+    response_model=ExecutionReviewQueueItem,
+    status_code=status.HTTP_200_OK,
+)
+def get_execution_review_issue(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    repository = ExecutionReviewIssueRepository(db)
+
+    issue = repository.get_by_id(
+        organization_id=organization_id,
+        project_id=project_id,
+        issue_id=issue_id,
+    )
+
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution review issue not found.",
+        )
+
+    return ExecutionReviewQueueItem.model_validate(issue)
+
+
+@router.patch(
+    "/{organization_id}/projects/{project_id}/execution/review/{issue_id}",
+    response_model=ExecutionReviewQueueItem,
+    status_code=status.HTTP_200_OK,
+)
+def update_execution_review_issue(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    update: ExecutionReviewUpdateRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    repository = ExecutionReviewIssueRepository(db)
+
+    issue = repository.get_by_id(
+        organization_id=organization_id,
+        project_id=project_id,
+        issue_id=issue_id,
+    )
+
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution review issue not found.",
+        )
+
+    if update.status is None and update.assigned_to is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one workflow field must be provided.",
+        )
+
+    if update.assigned_to is not None:
+        assigned_membership = db.scalar(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == organization_id,
+                OrganizationMember.user_id == update.assigned_to,
+            )
+        )
+
+        if assigned_membership is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assigned user is not a member of this organization.",
+            )
+
+        if assigned_membership.role not in {
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Execution review issues can only be assigned to organization "
+                    "admins or analysts."
+                ),
+            )
+
+    if update.status is not None:
+        current_status = issue.status
+
+        if update.status != current_status:
+            allowed_statuses = ALLOWED_REVIEW_TRANSITIONS[current_status]
+
+            if update.status not in allowed_statuses:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Invalid review status transition: "
+                        f"{current_status} -> {update.status}" 
+                    ),
+                )
+
+    resolved_at = None
+
+    if update.status in {"RESOLVED", "IGNORED"}:
+        resolved_at = datetime.now(timezone.utc)
+
+    updated_issue = repository.update_workflow(
+        issue=issue,
+        status=update.status,
+        assigned_to=update.assigned_to,
+        resolved_at=resolved_at,
+    )
+
+    repository.commit()
+
+    repository.db.refresh(updated_issue)
+
+    return ExecutionReviewQueueItem.model_validate(updated_issue)
+
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/execution/review/{issue_id}/investigation",
+    response_model=ExecutionReviewInvestigationResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_execution_review_investigation(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    review_repository = ExecutionReviewIssueRepository(db)
+
+    issue = review_repository.get_by_id(
+        organization_id=organization_id,
+        project_id=project_id,
+        issue_id=issue_id,
+    )
+
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution review issue not found.",
+        )
+
+    order_repository = ExecutionOrderRepository(db)
+
+    order = order_repository.get_by_id_in_project(
+        organization_id=organization_id,
+        project_id=project_id,
+        order_id=issue.order_id,
+    )
+
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution order not found.",
+        )
+
+    fill_repository = ExecutionFillRepository(db)
+
+    fills = fill_repository.list_by_order(
+        execution_order_id=order.id,
+    )
+
+    dataset_repository = DatasetRepository(db)
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset = dataset_repository.get_by_id_in_project(
+        dataset_id=issue.dataset_id,
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset not found.",
+        )
+
+    dataset_version = (
+        dataset_version_repository.get_by_id_for_dataset(
+            dataset_version_id=issue.dataset_version_id,
+            dataset_id=dataset.id,
+        )
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset version not found.",
+        )
+
+    if dataset_version.storage_uri is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Market-data dataset version has no storage URI.",
+        )
+
+    market_data = ExecutionMarketDataLoader(
+        storage_root=Path(
+            __file__
+        ).resolve().parents[4] / "storage",
+    ).load(
+        dataset_version.storage_uri,
+    )
+
+    engine = TCAEngine(
+        order_repository=order_repository,
+        fill_repository=fill_repository,
+    )
+
+    result = engine.calculate_execution_statistics(
+        organization_id=organization_id,
+        project_id=project_id,
+        order_id=order.id,
+        market_data=market_data,
+    )
+
+    tca_response = TCAResponse.model_validate(
+        _build_tca_response(result)
+    )
+
+    return ExecutionReviewInvestigationResponse(
+        issue=ExecutionReviewQueueItem.model_validate(issue),
+        order=ExecutionOrderResponse.model_validate(order),
+        fills=[
+            ExecutionFillResponse.model_validate(fill)
+            for fill in fills
+        ],
+        tca=tca_response,
+    )

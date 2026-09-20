@@ -3,7 +3,10 @@ from __future__ import annotations
 import uuid
 
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from datetime import datetime
+
+from app.schemas.execution import ExecutionOrderResponse, ExecutionFillResponse
 
 
 FindingCategory = Literal[
@@ -295,3 +298,62 @@ class ExecutionReviewResponse(BaseModel):
     items: list[ExecutionReviewItem] = Field(
         default_factory=list
     )
+
+
+class ExecutionReviewQueueItem(BaseModel):
+    id: uuid.UUID
+    order_id: uuid.UUID
+    dataset_id: uuid.UUID
+    dataset_version_id: uuid.UUID
+
+    issue_code: str
+    severity: Literal["MEDIUM", "HIGH", "CRITICAL"]
+    status: Literal[
+        "OPEN",
+        "ACKNOWLEDGED",
+        "IN_REVIEW",
+        "RESOLVED",
+        "IGNORED",
+    ]
+
+    metric: str
+    observed_value: float
+    threshold: float | None
+
+    message: str
+    evidence: dict
+    recommendations: list
+
+    assigned_to: uuid.UUID | None
+
+    created_at: datetime
+    updated_at: datetime
+    resolved_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionReviewQueueResponse(BaseModel):
+    items: list[ExecutionReviewQueueItem]
+    total: int
+    limit: int
+    offset: int
+
+class ExecutionReviewUpdateRequest(BaseModel):
+    status: Literal[
+        "OPEN",
+        "ACKNOWLEDGED",
+        "IN_REVIEW",
+        "RESOLVED",
+        "IGNORED",
+    ] | None = None
+
+    assigned_to: uuid.UUID | None = None
+
+
+class ExecutionReviewInvestigationResponse(BaseModel):
+    issue: ExecutionReviewQueueItem
+    order: ExecutionOrderResponse
+    fills: list[ExecutionFillResponse]
+
+    tca: TCAResponse

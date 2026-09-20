@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.models.execution_review_issue import ExecutionReviewIssue
@@ -20,14 +20,19 @@ class ExecutionReviewIssueRepository:
 
     def get_by_id(
         self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
         issue_id: uuid.UUID,
     ) -> ExecutionReviewIssue | None:
 
-        return self.db.scalar(
-            select(ExecutionReviewIssue).where(
-                ExecutionReviewIssue.id == issue_id
-            )
+        statement = select(ExecutionReviewIssue).where(
+            ExecutionReviewIssue.id == issue_id,
+            ExecutionReviewIssue.organization_id == organization_id,
+            ExecutionReviewIssue.project_id == project_id,
         )
+
+        return self.db.scalar(statement)
 
 
     def get_by_identity(
@@ -175,6 +180,78 @@ class ExecutionReviewIssueRepository:
         return list(
             self.db.scalars(statement).all()
         )
+
+
+    def count_for_project(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        status: str | None = None,
+        severity: str | None = None,
+        issue_code: str | None = None,
+        order_id: uuid.UUID | None = None,
+        assigned_to: uuid.UUID | None = None,
+    ) -> int:
+
+        statement = select(
+            func.count(ExecutionReviewIssue.id)
+        ).where(
+            ExecutionReviewIssue.organization_id == organization_id,
+            ExecutionReviewIssue.project_id == project_id,
+        )
+
+        if status is not None:
+            statement = statement.where(
+                ExecutionReviewIssue.status == status
+            )
+
+        if severity is not None:
+            statement = statement.where(
+                ExecutionReviewIssue.severity == severity
+            )
+
+        if issue_code is not None:
+            statement = statement.where(
+                ExecutionReviewIssue.issue_code == issue_code
+            )
+
+        if order_id is not None:
+            statement = statement.where(
+                ExecutionReviewIssue.order_id == order_id
+            )
+
+        if assigned_to is not None:
+            statement = statement.where(
+                ExecutionReviewIssue.assigned_to == assigned_to
+            )
+
+        return self.db.scalar(statement) or 0
+
+
+    def update_workflow(
+        self,
+        *,
+        issue: ExecutionReviewIssue,
+        status: str | None = None,
+        assigned_to: uuid.UUID | None = None,
+        resolved_at: datetime | None = None,
+    ) -> ExecutionReviewIssue:
+
+        if status is not None:
+            issue.status = status
+
+        if assigned_to is not None:
+            issue.assigned_to = assigned_to
+
+        if resolved_at is not None:
+            issue.resolved_at = resolved_at
+
+        issue.updated_at = datetime.now(timezone.utc)
+
+        self.db.add(issue)
+
+        return issue
 
 
     def commit(self) -> None:
