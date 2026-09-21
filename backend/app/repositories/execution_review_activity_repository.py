@@ -28,19 +28,14 @@ class ExecutionReviewActivityRepository:
         comment: str,
     ) -> ExecutionReviewActivity:
 
-        activity = ExecutionReviewActivity(
+        return self.create_activity(
             organization_id=organization_id,
             project_id=project_id,
             review_issue_id=review_issue_id,
             author_id=author_id,
             activity_type="COMMENT",
             comment=comment,
-            activity_metadata=None,
         )
-
-        self.db.add(activity)
-
-        return activity
 
 
     def list_for_issue(
@@ -83,6 +78,83 @@ class ExecutionReviewActivityRepository:
                 ExecutionReviewActivity.organization_id == organization_id,
                 ExecutionReviewActivity.project_id == project_id,
                 ExecutionReviewActivity.review_issue_id == review_issue_id,
+            )
+        )
+
+        return self.db.scalar(statement) or 0
+
+
+    def create_activity(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        review_issue_id: uuid.UUID,
+        author_id: uuid.UUID | None,
+        activity_type: str,
+        comment: str | None = None,
+        activity_metadata: dict | None = None,
+    ) -> ExecutionReviewActivity:
+
+        activity = ExecutionReviewActivity(
+            organization_id=organization_id,
+            project_id=project_id,
+            review_issue_id=review_issue_id,
+            author_id=author_id,
+            activity_type=activity_type,
+            comment=comment,
+            activity_metadata=activity_metadata,
+        )
+
+        self.db.add(activity)
+
+
+        return activity
+
+
+    def list_comment_for_issue(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        review_issue_id: uuid.UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[ExecutionReviewActivity]:
+
+        statement = (
+            select(ExecutionReviewActivity).where(
+                ExecutionReviewActivity.organization_id == organization_id,
+                ExecutionReviewActivity.project_id == project_id,
+                ExecutionReviewActivity.review_issue_id == review_issue_id,
+                ExecutionReviewActivity.activity_type == "COMMENT",
+            )
+            .order_by(
+                ExecutionReviewActivity.created_at.desc()
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+
+        return list(self.db.scalars(statement).all())
+
+
+    def count_comments_for_issue(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        review_issue_id: uuid.UUID,
+    ) -> int:
+
+        statement = (
+            select(func.count())
+            .select_from(ExecutionReviewActivity)
+            .where(
+                ExecutionReviewActivity.organization_id == organization_id,
+                ExecutionReviewActivity.project_id == project_id,
+                ExecutionReviewActivity.review_issue_id == review_issue_id,
+                ExecutionReviewActivity.activity_type == "COMMENT",
             )
         )
 

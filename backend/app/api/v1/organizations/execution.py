@@ -50,8 +50,8 @@ from app.schemas.tca import (
     ExecutionReviewUpdateRequest,
     ExecutionReviewInvestigationResponse,
     ExecutionReviewCommentCreateRequest,
-    ExecutionReviewCommentListResponse,
-    ExecutionReviewCommentResponse,
+    ExecutionReviewActivityListResponse,
+    ExecutionReviewActivityResponse,
 )
 from app.services.execution import (
     ExecutionService, 
@@ -73,6 +73,32 @@ ALLOWED_REVIEW_TRANSITIONS = {
 
 
 router = APIRouter()
+
+def _record_review_activity(
+    *,
+    db: Session,
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    review_issue_id: uuid.UUID,
+    author_id: uuid.UUID | None,
+    activity_type: str,
+    comment: str | None = None,
+    activity_metadata: dict | None = None, 
+) -> None:
+
+    repository = ExecutionReviewActivityRepository(db)
+
+    repository.create_activity(
+        organization_id=organization_id,
+        project_id=project_id,
+        review_issue_id=review_issue_id,
+        author_id=author_id,
+        activity_type=activity_type,
+        comment=comment,
+        activity_metadata=activity_metadata,
+    )
+
+
 
 @router.post(
     "/{organization_id}/projects/{project_id}/execution/orders",
@@ -1292,12 +1318,61 @@ def update_execution_review_issue(
     if update.status in {"RESOLVED", "IGNORED"}:
         resolved_at = datetime.now(timezone.utc)
 
+    previous_status = issue.status
+    previous_assigned_to = issue.assigned_to
+
     updated_issue = repository.update_workflow(
         issue=issue,
         status=update.status,
         assigned_to=update.assigned_to,
         resolved_at=resolved_at,
     )
+
+    if (
+        update.status is not None
+        and update.status != previous_status
+    ):
+        activity_type = "STATUS_CHANGED"
+
+        if update.status == "RESOLVED":
+            activity_type = "RESOLVED"
+
+        elif update.status == "IGNORED":
+            activity_type = "IGNORED"
+
+        _record_review_activity(
+            db=db,
+            organization_id=organization_id,
+            project_id = project_id,
+            review_issue_id=issue.id,
+            author_id = membership.user_id,
+            activity_type=activity_type,
+            activity_metadata={
+                "previous_status": previous_status,
+                "new_status": update.status,
+            },
+        )
+
+    if (
+        update.assigned_to is not None
+        and update.assigned_to != previous_assigned_to
+    ):
+        _record_review_activity(
+            db=db,
+            organization_id=organization_id,
+            project_id=project_id,
+            review_issue_id=issue.id,
+            author_id=membership.user_id,
+            activity_type="ASSIGNED",
+            activity_metadata={
+                "previous_assigned_to": (
+                    str(previous_assigned_to)
+                    if previous_assigned_to
+                    else None
+                ),
+                "assigned_to": str(update.assigned_to),
+            },
+        )
 
     repository.commit()
 
@@ -1429,7 +1504,7 @@ def get_execution_review_investigation(
 
 @router.post(
     "/{organization_id}/projects/{project_id}/execution/review/{issue_id}/comments",
-    response_model=ExecutionReviewCommentResponse,
+    response_model=ExecutionReviewActivityResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_execution_review_comment(
@@ -1478,15 +1553,80 @@ def create_execution_review_comment(
         db.rollback()
         raise
 
-    return ExecutionReviewCommentResponse.from_activity(activity)
+    return ExecutionReviewActivityResponse.from_activity(activity)
 
 
 @router.get(
     "/{organization_id}/projects/{project_id}/execution/review/{issue_id}/comments",
-    response_model=ExecutionReviewCommentListResponse,
+    response_model=ExecutionReviewActivityListResponse,
     status_code=status.HTTP_200_OK,
 )
 def list_execution_review_comment(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    issue_id: uuid.UUID,
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=500,
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    review_repository = ExecutionReviewIssueRepository(db)
+
+    issue = review_repository.get_by_id(
+        organization_id=organization_id,
+        project_id=project_id,
+        issue_id=issue_id,
+    )
+
+    if issue is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Execution review issue not found.",
+        )
+
+    activity_repository = ExecutionReviewActivityRepository(db)
+
+    items = activity_repository.list_comment_for_issue(
+        organization_id=organization_id,
+        project_id=project_id,
+        review_issue_id=issue_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    total = activity_repository.count_comments_for_issue(
+        organization_id=organization_id,
+        project_id=project_id,
+        review_issue_id=issue_id,
+    )
+
+    return ExecutionReviewActivityListResponse(
+        items=[
+            ExecutionReviewActivityResponse.from_activity(item)
+            for item in items
+        ],
+        total=total,
+    )
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/execution/review/{issue_id}/activities",
+    response_model=ExecutionReviewActivityListResponse,
+    status_code=status.HTTP_200_OK,
+)
+def list_execution_review_activities(
     organization_id: uuid.UUID,
     project_id: uuid.UUID,
     issue_id: uuid.UUID,
@@ -1538,9 +1678,9 @@ def list_execution_review_comment(
         review_issue_id=issue_id,
     )
 
-    return ExecutionReviewCommentListResponse(
+    return ExecutionReviewActivityListResponse(
         items=[
-            ExecutionReviewCommentResponse.from_activity(item)
+            ExecutionReviewActivityResponse.from_activity(item)
             for item in items
         ],
         total=total,

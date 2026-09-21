@@ -22,7 +22,16 @@ class ExecutionReviewActivity(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "activity_type IN ('COMMENT', 'STATUS_CHANGED', 'ASSIGNED')",
+            """
+            activity_type IN (
+                'ISSUE_CREATED',
+                'COMMENT',
+                'STATUS_CHANGED',
+                'ASSIGNED',
+                'RESOLVED',
+                'IGNORED',
+            )
+            """,
             name="ck_execution_review_activity_type",
         ),
     )

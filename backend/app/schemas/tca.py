@@ -366,7 +366,7 @@ class ExecutionReviewCommentCreateRequest(BaseModel):
     )
 
 
-class ExecutionReviewCommentResponse(BaseModel):
+class ExecutionReviewActivityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
@@ -390,6 +390,6 @@ class ExecutionReviewCommentResponse(BaseModel):
         )
 
 
-class ExecutionReviewCommentListResponse(BaseModel):
-    items: list[ExecutionReviewCommentResponse]
+class ExecutionReviewActivityListResponse(BaseModel):
+    items: list[ExecutionReviewActivityResponse]
     total: int
