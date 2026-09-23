@@ -8,6 +8,7 @@ from app.services.execution.market_impact_engine import MarketImpactEngine
 from app.services.execution.execution_quality_engine import ExecutionQualityEngine
 from app.services.execution.execution_diagnosis_engine import ExecutionDiagnosisEngine
 from app.services.execution.execution_review_service import ExecutionReviewService
+from app.services.execution.execution_analytics_service import ExecutionAnalyticsService
 
 __all__ = [
     "ExecutionService",
@@ -20,4 +21,5 @@ __all__ = [
     "ExecutionQualityEngine",
     "ExecutionDiagnosisEngine",
     "ExecutionReviewService",
+    "ExecutionAnalyticsService",
 ]

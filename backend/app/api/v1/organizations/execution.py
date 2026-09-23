@@ -53,11 +53,16 @@ from app.schemas.tca import (
     ExecutionReviewActivityListResponse,
     ExecutionReviewActivityResponse,
 )
+from app.schemas.execution_analytics import (
+    ExecutionAnalyticsRequest,
+    ExecutionAnalyticsResponse,
+)
 from app.services.execution import (
     ExecutionService, 
     TCAEngine, 
     ExecutionMarketDataLoader, 
     ExecutionReviewService,
+    ExecutionAnalyticsService,
 )
 from app.services.execution.tca_preflight import TCAPreflightService
 from app.services.execution.execution_review_persistence_service import ExecutionReviewPersistenceService
@@ -1684,4 +1689,91 @@ def list_execution_review_activities(
             for item in items
         ],
         total=total,
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/execution/analytics",
+    response_model=ExecutionAnalyticsResponse,
+    status_code=status.HTTP_200_OK,
+)
+def calculate_execution_analytics(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    request: ExecutionAnalyticsRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    if (
+        request.start_time is not None
+        and request.end_time is not None
+        and request.start_time > request.end_time
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="start_time must be early than or equal to end_time",
+        )
+
+    dataset_repository = DatasetRepository(db)
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset = dataset_repository.get_by_id_in_project(
+        dataset_id=request.market_data.dataset_id,
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset not found.",
+        )
+
+    dataset_version = dataset_version_repository.get_by_id_for_dataset(
+        dataset_version_id=request.market_data.dataset_version_id,
+        dataset_id=dataset.id,
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Market-data dataset version not found.",
+        )
+
+    if dataset_version.storage_uri is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Market-data dataset version has no storage URI."
+        )
+
+    market_data = ExecutionMarketDataLoader(
+        storage_root=(
+            Path(__file__).resolve().parents[4] / "storage"
+        ),
+    ).load(dataset_version.storage_uri)
+
+    service = ExecutionAnalyticsService(
+        order_repository=ExecutionOrderRepository(db),
+        fill_repository=ExecutionFillRepository(db),
+    )
+
+    return service.analyze(
+        organization_id=organization_id,
+        project_id=project_id,
+        market_data=market_data,
+        symbol=request.symbol,
+        side=request.side,
+        strategy=request.strategy,
+        algorithm=request.algorithm,
+        venue=request.venue,
+        start_time=request.start_time,
+        end_time=request.end_time,
+        limit=request.limit,
     )

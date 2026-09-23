@@ -219,3 +219,70 @@ class ExecutionOrderRepository:
         self.db.refresh(order)
 
         return order
+
+
+    def list_for_analytics(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        symbol: str | None = None,
+        side: str | None = None,
+        strategy: str | None = None,
+        algorithm: str | None = None,
+        venue: str | None = None,
+        start_time: None,
+        end_time: None,
+        limit: int = 100,
+    ) -> list[ExecutionOrder]:
+
+        statement = (
+            select(ExecutionOrder).where(
+                ExecutionOrder.organization_id == organization_id,
+                ExecutionOrder.project_id == project_id,
+            )
+        )
+
+        if symbol is not None:
+            statement = statement.where(
+                ExecutionOrder.symbol == symbol
+            )
+
+        if side is not None:
+            statement = statement.where(
+                ExecutionOrder.side == side
+            )
+
+        if strategy is not None:
+            statement = statement.where(
+                ExecutionOrder.strategy == strategy
+            )
+
+        if algorithm is not None:
+            statement = statement.where(
+                ExecutionOrder.algorithm == algorithm
+            )
+
+        if venue is not None:
+            statement = statement.where(
+                ExecutionOrder.venue == venue
+            )
+
+        if start_time is not None:
+            statement = statement.where(
+                ExecutionOrder.submitted_at >= start_time
+            )
+
+        if end_time is not None:
+            statement = statement.where(
+                ExecutionOrder.submitted_at <= end_time
+            )
+
+        statement = (
+            statement.order_by(
+                ExecutionOrder.submitted_at.desc()
+            )
+            .limit(limit)
+        )
+
+        return list(self.db.scalars(statement).all())
