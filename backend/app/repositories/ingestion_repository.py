@@ -6,10 +6,24 @@ from app.models.ingestion import Ingestion
 
 class IngestionRepository:
 
-    def __init__(self, db: Session):
+    def __init__(
+        self, 
+        db: Session,
+    ):
         self.db = db
 
-    def create(self, dataset_id: uuid.UUID, dataset_version_id: uuid.UUID, source_filename: str, storage_key: str, file_size_bytes: int, created_by: uuid.UUID, checksum: str | None = None) -> Ingestion:
+    def create(
+        self, 
+        dataset_id: uuid.UUID, 
+        dataset_version_id: uuid.UUID, 
+        source_filename: str, 
+        storage_key: str, 
+        file_size_bytes: int, 
+        created_by: uuid.UUID, 
+        checksum: str | None = None,
+        commit: bool = True,
+    ) -> Ingestion:
+
         ingestion = Ingestion(
             dataset_id=dataset_id,
             dataset_version_id=dataset_version_id,
@@ -22,12 +36,20 @@ class IngestionRepository:
         )
 
         self.db.add(ingestion)
-        self.db.commit()
-        self.db.refresh(ingestion)
+
+        if commit:
+            self.db.commit()
+            self.db.refresh(ingestion)
+
+        else:
+            self.db.flush()
 
         return ingestion
 
-    def get_by_id(self, ingestion_id: uuid.UUID) -> Ingestion | None:
+    def get_by_id(
+        self, ingestion_id: uuid.UUID,
+    ) -> Ingestion | None:
+
         return (
             self.db.query(Ingestion)
             .filter(
@@ -36,7 +58,12 @@ class IngestionRepository:
             .first()
         )
 
-    def get_by_id_for_dataset(self, ingestion_id: uuid.UUID, dataset_id: uuid.UUID) -> Ingestion | None:
+    def get_by_id_for_dataset(
+        self, 
+        ingestion_id: uuid.UUID, 
+        dataset_id: uuid.UUID,
+    ) -> Ingestion | None:
+
         return (
             self.db.query(Ingestion)
             .filter(
@@ -46,7 +73,11 @@ class IngestionRepository:
             .first()
         )
 
-    def list_by_dataset(self, dataset_id: uuid.UUID) -> list[Ingestion]:
+    def list_by_dataset(
+        self, 
+        dataset_id: uuid.UUID,
+    ) -> list[Ingestion]:
+
         return(
             self.db.query(Ingestion)
             .filter(
@@ -56,7 +87,11 @@ class IngestionRepository:
             .all()
         )
 
-    def update(self, ingestion: Ingestion, **fields) -> Ingestion:
+    def update(
+        self, 
+        ingestion: Ingestion, 
+        **fields,
+    ) -> Ingestion:
 
         for field, value in fields.items():
             setattr(ingestion, field, value)
@@ -66,7 +101,11 @@ class IngestionRepository:
 
         return ingestion 
 
-    def save(self, ingestion: Ingestion) -> Ingestion:
+    def save(
+        self, 
+        ingestion: Ingestion,
+    ) -> Ingestion:
+
         self.db.commit()
         self.db.refresh(ingestion)
 

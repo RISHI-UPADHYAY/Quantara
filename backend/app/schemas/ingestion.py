@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.dataset_version import DatasetVersionResponse
 
 class IngestionCreate(BaseModel):
     dataset_version_id: uuid.UUID
@@ -35,3 +36,20 @@ class IngestionFailRequest(BaseModel):
         min_length=1,
         max_length=5000,
     )
+
+
+class IngestionValidationResponse(BaseModel):
+    file_size_bytes: int
+    checksum: str
+    row_count: int
+    columns: list[str]
+    canonical_columns: list[str]
+    column_mapping: dict[str, str]
+    schema_hash: str
+    warnings: list[str]
+
+
+class IngestionUploadResponse(BaseModel):
+    ingestion: IngestionResponse
+    dataset_version: DatasetVersionResponse
+    validation: IngestionValidationResponse
