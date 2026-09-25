@@ -10,16 +10,33 @@ class DatasetVersionRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_version(self, dataset_id: uuid.UUID, created_by: uuid.UUID, storage_uri: str | None = None, row_count: int | None = None, checksum: str | None = None, schema_hash: str | None = None) -> DatasetVersion:
+    def create_version(
+        self, 
+        dataset_id: uuid.UUID, 
+        created_by: uuid.UUID, 
+        storage_uri: str | None = None, 
+        row_count: int | None = None, 
+        checksum: str | None = None, 
+        schema_hash: str | None = None,
+        commit: bool = True,
+    ) -> DatasetVersion:
 
         latest_version = (
             self.db.query(DatasetVersion)
-            .filter(DatasetVersion.dataset_id == dataset_id)
-            .order_by(DatasetVersion.version.desc())
+            .filter(
+                DatasetVersion.dataset_id == dataset_id
+            )
+            .order_by(
+                DatasetVersion.version.desc()
+            )
             .first()
         )
 
-        next_version = 1 if latest_version is None else latest_version.version + 1
+        next_version = (
+            1 
+            if latest_version is None 
+            else latest_version.version + 1
+        )
 
         dataset_version = DatasetVersion(
             dataset_id=dataset_id,
@@ -33,8 +50,13 @@ class DatasetVersionRepository:
         )
 
         self.db.add(dataset_version)
-        self.db.commit()
-        self.db.refresh(dataset_version)
+
+        if commit:
+            self.db.commit()
+            self.db.refresh(dataset_version)
+
+        else:
+            self.db.flush()
 
         return dataset_version
 
