@@ -169,7 +169,7 @@ class BenchmarkEngine:
     def calculate_market_vwap(
         self,
         *,
-        order_symbol: pd.DataFrame,
+        order_symbol: str,
         market_data: pd.DataFrame,
         start_timestamp: pd.Timestamp,
         end_timestamp: pd.Timestamp,
@@ -198,10 +198,24 @@ class BenchmarkEngine:
             self.PRICE_COLUMNS,
         )
 
-        volume_column = self._resolve_column(
+        volume_column = self._resolve_optional_column(
             dataframe,
             ("volume", "quantity", "qty"),
         )
+
+        if volume_column is None:
+            return {
+                "symbol": order_symbol,
+                "start_timestamp": pd.Timestamp(start_timestamp).isoformat(),
+                "end_timestamp": pd.Timestamp(end_timestamp).isoformat(),
+                "vwap": None,
+                "total_volume": None,
+                "market_data_rows": 0,
+                "unavailable_reason": (
+                    "Market VWAP requires volume data; "
+                    "the supplied dataset has no volume column."
+                ),
+            }
 
         dataframe[timestamp_column] = pd.to_datetime(
             dataframe[timestamp_column],
@@ -500,6 +514,53 @@ class BenchmarkEngine:
             str(column).strip().lower()
             for column in result.columns 
         ]
+
+        #Already in long format: date/timestamp + symbol + price
+        has_price_column = any(
+            column in result.columns
+            for column in BenchmarkEngine.PRICE_COLUMNS
+        )
+
+        if has_price_column:
+            return result
+
+        #Wide format: data, AAPL, MSFT, NVDA, ...
+        timestamp_column = next(
+            (
+                column
+                for column in BenchmarkEngine.TIMESTAMP_COLUMNS
+                if column in result.columns
+            ),
+            None,
+        )
+
+        if timestamp_column is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    "Market data must contain a timestamp/date column "
+                    "and either a price column or wide-format symbol columns."
+                ),
+            )
+
+        symbol_columns = [
+            column
+            for column in result.columns
+            if column != timestamp_column
+        ]
+
+        if not symbol_columns:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Wide-format market data contains no symbol columns."
+            )
+
+        result = result.melt(
+            id_vars=[timestamp_column],
+            value_vars=symbol_columns,
+            var_name="symbol",
+            value_name="price",
+        ) 
 
         return result
 

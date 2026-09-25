@@ -13,6 +13,9 @@ from app.repositories.execution_order_repository import ExecutionOrderRepository
 from app.services.execution.implementation_shortfall_engine import ImplementationShortfallEngine
 from app.services.execution.market_impact_engine import MarketImpactEngine
 from app.services.execution.execution_quality_engine import ExecutionQualityEngine
+from app.services.execution.execution_diagnosis_engine import ExecutionDiagnosisEngine
+from app.services.execution.execution_recommendation_engine import ExecutionRecommendationEngine
+from app.services.execution.evidence_set_builder import EvidenceSetBuilder
 
 
 class TCAEngine:
@@ -26,6 +29,9 @@ class TCAEngine:
         implementation_shortfall_engine: ImplementationShortfallEngine | None = None,
         market_impact_engine: MarketImpactEngine | None = None,
         execution_quality_engine: ExecutionQualityEngine | None = None,
+        execution_diagnosis_engine: ExecutionDiagnosisEngine | None = None,
+        execution_recommendation_engine: ExecutionRecommendationEngine | None = None,
+        evidence_set_builder: EvidenceSetBuilder | None = None,
     ):
         self.order_repository = order_repository
         self.fill_repository = fill_repository
@@ -36,6 +42,9 @@ class TCAEngine:
         self.implementation_shortfall_engine = implementation_shortfall_engine or ImplementationShortfallEngine()
         self.market_impact_engine = market_impact_engine or MarketImpactEngine()
         self.execution_quality_engine = execution_quality_engine or ExecutionQualityEngine()
+        self.execution_diagnosis_engine = execution_diagnosis_engine or ExecutionDiagnosisEngine()
+        self.execution_recommendation_engine = execution_recommendation_engine or ExecutionRecommendationEngine()
+        self.evidence_set_builder = evidence_set_builder or EvidenceSetBuilder()
 
 
     def calculate_execution_statistics(
@@ -126,6 +135,7 @@ class TCAEngine:
         arrival_price = None
         arrival_timestamp = None
         market_vwap = None
+        vwap_result = None
         market_twap = None
         end_market_price = None
         market_impact_per_share = None
@@ -148,6 +158,80 @@ class TCAEngine:
             end_timestamp = pd.Timestamp(
                 max(fill.executed_at for fill in fills)
             )
+
+            #Require market data for this symbol to extend through the latest fill timestamp. Do not calculate TCA using stale data.
+            normalized_market_data = self.benchmark_engine._normalize_market_data(market_data)
+
+            timestamp_column = self.benchmark_engine._resolve_column(
+                normalized_market_data,
+                self.benchmark_engine.TIMESTAMP_COLUMNS,
+            )
+
+            price_column = self.benchmark_engine._resolve_column(
+                normalized_market_data,
+                self.benchmark_engine.PRICE_COLUMNS,
+            )
+
+            symbol_column = self.benchmark_engine._resolve_optional_column(
+                normalized_market_data,
+                self.benchmark_engine.SYMBOL_COLUMNS,
+            )
+
+            normalized_market_data[timestamp_column] = pd.to_datetime(
+                normalized_market_data[timestamp_column],
+                utc=True,
+                errors="coerce",
+            )
+
+            normalized_market_data[price_column] = pd.to_numeric(
+                normalized_market_data[price_column],
+                errors="coerce",
+            )
+
+            valid_market_data = normalized_market_data.dropna(
+                subset=[timestamp_column, price_column]
+            )
+
+            valid_market_data = valid_market_data[
+                valid_market_data[price_column] > 0
+            ]
+
+            if symbol_column is not None:
+                valid_market_data = valid_market_data[
+                    valid_market_data[symbol_column]
+                    .astype(str)
+                    .str.upper()
+                    == order.symbol.upper()
+                ]
+
+            if valid_market_data.empty:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        f"No valid market data found for symbol {order.symbol}."
+                    ),
+                )
+
+            latest_market_timestamp = valid_market_data[timestamp_column].max()
+            required_market_timestamp = pd.Timestamp(end_timestamp)
+
+            if required_market_timestamp.tzinfo is None:
+                required_market_timestamp = required_market_timestamp.tz_localize("UTC")
+
+            else:
+                required_market_timestamp = required_market_timestamp.tz_convert("UTC")
+
+            if latest_market_timestamp < required_market_timestamp:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail=(
+                        "Market data does not cover the latest fill timestamp. "
+                        "Latest market observation: "
+                        f"{latest_market_timestamp.isoformat()}; "
+                        "latest fill: "
+                        f"{required_market_timestamp.isoformat()}"
+                    )
+                )
 
             end_market_result = self.benchmark_engine.calculate_end_market_price(
                 order_symbol=order.symbol,
@@ -243,6 +327,43 @@ class TCAEngine:
                 side=order.side,
             )
 
+        execution_diagnoses = None
+        execution_evidence_set = None
+        execution_recommendations = []
+
+        if(
+            arrival_price is not None
+            and market_vwap is not None
+            and end_market_price is not None
+            and total_slippage is not None
+            and total_shortfall is not None
+            and total_market_impact is not None
+        ):
+            execution_diagnoses = self.execution_diagnosis_engine.calculate_execution_diagnoses(
+                arrival_price=arrival_price,
+                execution_price=average_execution_price,
+                market_vwap=market_vwap,
+                end_market_price=end_market_price,
+                total_slippage=total_slippage,
+                total_shortfall=total_shortfall,
+                total_market_impact=total_market_impact,
+                commission=commission,
+                fees=fees,
+                executed_quantity=executed_quantity,
+                side=order.side,
+            )
+
+            if execution_diagnoses is not None:
+                execution_evidence_set = self.evidence_set_builder.build(
+                    execution_diagnoses
+                )
+
+                execution_recommendations = (
+                    self.execution_recommendation_engine.generate_recommendations(
+                        execution_evidence_set=execution_evidence_set,
+                    )
+                )
+
         return {
             "order_id": str(order.id),
             "symbol": order.symbol,
@@ -262,6 +383,11 @@ class TCAEngine:
             "arrival_price": arrival_price,
             "arrival_timestamp": arrival_timestamp,
             "market_vwap": market_vwap,
+            "market_vwap_unavailable_reason": (
+                vwap_result.get("unavailable_reason")
+                if market_data is not None
+                else None
+            ),
             "market_twap": market_twap,
             "price_slippage": price_slippage,
             "percentage_slippage": percentage_slippage,
@@ -276,4 +402,17 @@ class TCAEngine:
             "percentage_market_impact": percentage_market_impact,
             "total_market_impact": total_market_impact,
             "execution_quality": execution_quality,
+            "execution_quality_unavailable_reason": (
+                "Execution quality requires market VWAP, but VWAP is unavailable."
+                if execution_quality is None and market_vwap is None
+                else None
+            ),
+            "execution_diagnoses": execution_diagnoses,
+            "execution_diagnoses_unavailable_reason": (
+                "VWAP-dependent diagnoses are unavailable because market VWAP is missing."
+                if execution_diagnoses is None and market_vwap is None
+                else None
+            ),
+            "execution_evidence_set": execution_evidence_set,
+            "execution_recommendations": execution_recommendations,
         }
