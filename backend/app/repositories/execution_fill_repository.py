@@ -26,6 +26,7 @@ class ExecutionFillRepository:
         venue: str | None = None,
         commission: float | None = None,
         fees: float | None = None,
+        commit: bool = False,
     ) -> ExecutionFill:
 
         fill = ExecutionFill(
@@ -40,7 +41,13 @@ class ExecutionFillRepository:
         )
 
         self.db.add(fill)
-        self.db.flush()
+
+        if commit:
+            self.db.commit()
+            self.db.refresh(fill)
+
+        else:
+            self.db.flush()
 
         return fill
 

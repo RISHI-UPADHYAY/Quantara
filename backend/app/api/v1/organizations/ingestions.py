@@ -147,7 +147,8 @@ def upload_ingestion(
 
         try: 
             validation = processor.process_csv(
-                str(temporary_path)
+                str(temporary_path),
+                dataset_type=dataset.dataset_type,
             )
 
         except IngestionProcessingError as exc:

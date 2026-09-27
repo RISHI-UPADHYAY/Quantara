@@ -61,7 +61,11 @@ class DatasetVersionRepository:
         return dataset_version
 
 
-    def get_version(self, dataset_id: uuid.UUID, version: int) -> DatasetVersion | None:
+    def get_version(
+        self, 
+        dataset_id: uuid.UUID, 
+        version: int
+    ) -> DatasetVersion | None:
 
         return (
             self.db.query(DatasetVersion)
@@ -73,7 +77,10 @@ class DatasetVersionRepository:
         )
 
 
-    def list_versions(self, dataset_id: uuid.UUID) -> list[DatasetVersion]:
+    def list_versions(
+        self, 
+        dataset_id: uuid.UUID
+    ) -> list[DatasetVersion]:
 
         return (
             self.db.query(DatasetVersion)
@@ -83,7 +90,10 @@ class DatasetVersionRepository:
         )
 
 
-    def get_latest_version(self, dataset_id: uuid.UUID) -> DatasetVersion | None:
+    def get_latest_version(
+        self, 
+        dataset_id: uuid.UUID
+    ) -> DatasetVersion | None:
 
         return (
             self.db.query(DatasetVersion)
@@ -93,7 +103,11 @@ class DatasetVersionRepository:
         )
 
 
-    def get_by_id_for_dataset(self, dataset_version_id: uuid.UUID, dataset_id: uuid.UUID) -> DatasetVersion | None:
+    def get_by_id_for_dataset(
+        self, 
+        dataset_version_id: uuid.UUID, 
+        dataset_id: uuid.UUID
+    ) -> DatasetVersion | None:
 
         return (
             self.db.query(DatasetVersion)

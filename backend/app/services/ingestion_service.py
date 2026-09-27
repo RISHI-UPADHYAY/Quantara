@@ -9,10 +9,22 @@ from app.repositories.ingestion_repository import IngestionRepository
 
 class IngestionService:
 
-    def __init__(self, db: Session):
+    def __init__(
+        self, 
+        db: Session,
+    ):
         self.repository = IngestionRepository(db)
 
-    def create_ingestion(self, dataset_id: uuid.UUID, dataset_version_id: uuid.UUID, source_filename: str, storage_key: str, file_size_bytes: int, created_by: uuid.UUID, checksum: str | None = None) -> Ingestion:
+    def create_ingestion(
+        self, 
+        dataset_id: uuid.UUID, 
+        dataset_version_id: uuid.UUID, 
+        source_filename: str, 
+        storage_key: str, 
+        file_size_bytes: int, 
+        created_by: uuid.UUID, 
+        checksum: str | None = None,
+    ) -> Ingestion:
 
         return self.repository.create(
             dataset_id=dataset_id,
@@ -24,7 +36,10 @@ class IngestionService:
             created_by=created_by,
         )
 
-    def start_ingestion(self, ingestion: Ingestion) -> Ingestion:
+    def start_ingestion(
+        self, 
+        ingestion: Ingestion,
+    ) -> Ingestion:
 
         if ingestion.status != "pending":
             raise ValueError(
@@ -38,7 +53,10 @@ class IngestionService:
             error_message=None,
         )
 
-    def complete_ingestion(self, ingestion: Ingestion) -> Ingestion:
+    def complete_ingestion(
+        self, 
+        ingestion: Ingestion,
+    ) -> Ingestion:
 
         if ingestion.status != "processing":
             raise ValueError(
@@ -52,7 +70,11 @@ class IngestionService:
             error_message=None,
         )
 
-    def fail_ingestion(self, ingestion: Ingestion, error_message: str) -> Ingestion:
+    def fail_ingestion(
+        self, 
+        ingestion: Ingestion, 
+        error_message: str,
+    ) -> Ingestion:
 
         if ingestion.status != "processing":
             raise ValueError(

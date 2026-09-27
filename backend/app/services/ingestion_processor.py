@@ -12,14 +12,6 @@ class IngestionProcessingError(Exception):
 
 class IngestionProcessor:
 
-    REQUIRED_COLUMNS = {
-        "symbol",
-        "side",
-        "quantity",
-        "order_type",
-        "submitted_at",
-    }
-
     COLUMN_ALIASES = {
         "symbol": {
             "symbol",
@@ -46,8 +38,6 @@ class IngestionProcessor:
             "submission_timestamp",
             "order_time",
             "order_timestamp",
-            "timestamp",
-            "datetime",
         },
         "completed_at": {
             "completed_at",
@@ -79,9 +69,66 @@ class IngestionProcessor:
             "order_id",
             "external_id",
         },
+        "external_fill_id": {
+            "fill_id",
+            "external_fill_id",
+            "external_fill",
+        },
+        "fill_price": {
+            "fill_price",
+            "execution_price",
+            "exec_price",
+        },
+        "fill_quantity": {
+            "fill_quantity",
+            "executed_quantity",
+            "exec_quantity",
+            "filled_quantity",
+        },
+        "executed_at": {
+            "executed_at",
+            "execution_time",
+            "execution_timestamp",
+            "fill_time",
+        },
+        "fill_venue": {
+            "fill_venue",
+            "execution_venue",
+            "exec_venue",
+        },
+        "commission": {
+            "commission",
+            "commission_amount",
+        },
+        "fees": {
+            "fees",
+            "fee",
+            "fee_amount",
+        },
+        "timestamp": {
+            "timestamp",
+            "datetime",
+            "date",
+            "time",
+        },
+        "price": {
+            "price",
+            "close",
+            "last",
+            "mid",
+            "mid_price",
+        },
+        "volume": {
+            "volume", 
+            "quantity",
+            "qty",
+        },
     }
 
-    VALID_SIDES = {"buy", "sell"}
+    VALID_SIDES = {
+        "buy", 
+        "sell",
+    }
 
 
     VALID_ORDER_TYPES = {
@@ -103,6 +150,7 @@ class IngestionProcessor:
     def process_csv(
         self,
         file_path: str,
+        dataset_type: str,
         expected_checksum: str | None = None,
     ) -> dict[str, Any]:
 
@@ -124,15 +172,36 @@ class IngestionProcessor:
             columns,
             column_mapping,
             warnings,
-        ) = self._inspect_csv(path)
+        ) = self._inspect_csv(path, dataset_type=dataset_type)
 
         canonical_columns = sorted(
             set(column_mapping.values())
         )
 
+        required_columns_by_type = {
+            "execution": {
+                "symbol",
+                "side",
+                "quantity",
+                "order_type",
+                "submitted_at",
+            },
+            "market_data": {
+                "timestamp",
+                "symbol",
+                "price",
+            },
+        }
+
+        required_columns = required_columns_by_type.get(dataset_type)
+
+        if required_columns is None:
+            raise IngestionProcessingError(
+                f"Unsupported dataset type '{dataset_type}'"
+            )
+
         missing_columns = sorted(
-            self.REQUIRED_COLUMNS
-            - set(canonical_columns)
+            required_columns - set(canonical_columns)
         )
 
         if missing_columns:
@@ -182,6 +251,7 @@ class IngestionProcessor:
     def _inspect_csv(
         cls,
         path: Path,
+        dataset_type: str,
     ) -> tuple[
         int,
         list[str],
@@ -256,6 +326,7 @@ class IngestionProcessor:
                         row=row,
                         column_mapping=column_mapping,
                         row_number=row_number,
+                        dataset_type=dataset_type,
                     )
 
                 if row_count == 0:
@@ -327,6 +398,7 @@ class IngestionProcessor:
         row: dict[str, str | None],
         column_mapping: dict[str, str],
         row_number: int,
+        dataset_type: str,
     ) -> None:
 
         canonical = {
@@ -334,6 +406,67 @@ class IngestionProcessor:
             for original_name, canonical_name
             in column_mapping.items()
         }
+
+        if dataset_type == "market_data":
+            cls._validate_market_data_row(
+                canonical=canonical,
+                row_number=row_number,
+            )
+
+            return
+
+        if dataset_type == "execution":
+            cls._validate_execution_row(
+                canonical=canonical,
+                row_number=row_number,
+            )
+
+            return
+
+        raise IngestionProcessingError(
+            f"Unsupported dataset type '{dataset_type}'"
+        )
+
+
+    @staticmethod
+    def _calculate_checksum(
+        path: Path,
+    ) -> str:
+
+        sha256 = hashlib.sha256()
+
+        with path.open("rb") as file:
+
+            for chunk in iter(
+                lambda: file.read(1024 * 1024),
+                b"",
+            ):
+
+                sha256.update(chunk)
+
+        return sha256.hexdigest()
+
+
+    @staticmethod
+    def _calculate_schema_hash(
+        canonical_columns: list[str],
+    ) -> str:
+
+        payload = "|".join(
+            sorted(canonical_columns)
+        )
+
+        return hashlib.sha256(
+            payload.encode("utf-8")
+        ).hexdigest()
+
+
+    @classmethod
+    def _validate_execution_row(
+        cls,
+        canonical: dict[str, str | None],
+        row_number: int,
+    ) -> None:
 
         symbol = canonical.get("symbol")
 
@@ -372,8 +505,7 @@ class IngestionProcessor:
 
         if order_type not in cls.VALID_ORDER_TYPES:
             raise IngestionProcessingError(
-                f"Row {row_number}: invalid order_type "
-                f"'{order_type}'"
+                f"Row {row_number}: invalid order_type '{order_type}'"
             )
 
         submitted_at = canonical.get("submitted_at")
@@ -382,40 +514,32 @@ class IngestionProcessor:
             submitted_at is None
             or not str(submitted_at).strip()
         ):
+
             raise IngestionProcessingError(
                 f"Row {row_number}: submitted_at is required"
             )
 
         if order_type == "limit":
 
-            limit_price = canonical.get(
-                "limit_price"
-            )
+            limit_price = canonical.get("limit_price")
 
             if limit_price in (None, ""):
                 raise IngestionProcessingError(
                     f"Row {row_number}: limit order requires limit_price"
                 )
 
-            else:
+            try:
+                limit_price_value = float(limit_price)
 
-                try:
-                    limit_price_value = float(
-                        limit_price
-                    )
+            except (TypeError, ValueError):
+                raise IngestionProcessingError(
+                    f"Row {row_number}: limit_price must numeric"
+                )
 
-                except (TypeError, ValueError):
-
-                    raise IngestionProcessingError(
-                        f"Row {row_number}: "
-                        "limit_price must numeric"
-                    )
-
-                if limit_price_value <= 0:
-                    raise IngestionProcessingError(
-                        f"Row {row_number}: "
-                        "limit_price must be greater than zero"
-                    )
+            if limit_price_value <= 0:
+                raise IngestionProcessingError(
+                    f"Row {row_number}: limit_price must be greater than zero"
+                )
 
         status = canonical.get("status")
 
@@ -429,40 +553,60 @@ class IngestionProcessor:
 
             if normalized_status not in cls.VALID_STATUSES:
                 raise IngestionProcessingError(
-                    f"Row {row_number}: "
-                    f"invalid status '{normalized_status}'"
+                    f"Row {row_number}: invalid status '{normalized_status}'"
                 )
+
             
 
 
-    @staticmethod
-    def _calculate_checksum(
-        path: Path,
-    ) -> str:
+    @classmethod
+    def _validate_market_data_row(
+        cls,
+        canonical: dict[str, str | None],
+        row_number: int,
+    ) -> None:
 
-        sha256 = hashlib.sha256()
+        symbol = canonical.get("symbol")
 
-        with path.open("rb") as file:
+        if symbol is None or not str(symbol).strip():
+            raise IngestionProcessingError(
+                f"Row {row_number}: symbol is required"
+            )
 
-            for chunk in iter(
-                lambda: file.read(1024 * 1024),
-                b"",
-            ):
+        timestamp = canonical.get("timestamp")
 
-                sha256.update(chunk)
+        if timestamp is None or not str(timestamp).strip():
+            raise IngestionProcessingError(
+                f"Row {row_number}: timestamp is required"
+            )
 
-        return sha256.hexdigest()
+        price = canonical.get("price")
 
+        try:
+            price_value = float(price)
 
-    @staticmethod
-    def _calculate_schema_hash(
-        canonical_columns: list[str],
-    ) -> str:
+        except (TypeError, ValueError):
+            raise IngestionProcessingError(
+                f"Row {row_number}: price must be numeric"
+            )
 
-        payload = "|".join(
-            sorted(canonical_columns)
-        )
+        if price_value < 0:
+            raise IngestionProcessingError(
+                f"Row {row_number}: price must be non negative"
+            )
 
-        return hashlib.sha256(
-            payload.encode("utf-8")
-        ).hexdigest()
+        volume = canonical.get("volume")
+
+        if volume not in (None, ""):
+            try:
+                volume_value = float(volume)
+
+            except (TypeError, ValueError):
+                raise IngestionProcessingError(
+                    f"Row {row_number}: volume must be numeric"
+                )
+
+            if volume_value < 0:
+                raise IngestionProcessingError(
+                    f"Row {row_number}: volume must be non-negative"
+                )

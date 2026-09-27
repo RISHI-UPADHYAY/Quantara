@@ -19,7 +19,18 @@ router = APIRouter()
     response_model=DatasetResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_dataset(organization_id: UUID, project_id: UUID, data: DatasetCreate, membership: OrganizationMember = Depends(require_organization_role(ROLE_ADMIN, ROLE_ANALYST)), db: Session = Depends(get_db)):
+def create_dataset(
+    organization_id: UUID, 
+    project_id: UUID, 
+    data: DatasetCreate, 
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN, 
+            ROLE_ANALYST,
+        )
+    ), 
+    db: Session = Depends(get_db),
+):
     project_repository = ProjectRepository(db)
 
     project = project_repository.get_by_id_in_organization(
@@ -40,6 +51,7 @@ def create_dataset(organization_id: UUID, project_id: UUID, data: DatasetCreate,
         project_id=project_id,
         name=data.name,
         description=data.description,
+        dataset_type=data.dataset_type,
         asset_class=data.asset_class,
         market=data.market,
         frequency=data.frequency,
@@ -53,7 +65,17 @@ def create_dataset(organization_id: UUID, project_id: UUID, data: DatasetCreate,
     "/{organization_id}/projects/{project_id}/datasets",
     response_model=list[DatasetResponse],
 )
-def list_datasets(organization_id: UUID, project_id: UUID, membership: OrganizationMember = Depends(require_organization_role(ROLE_ADMIN, ROLE_ANALYST)), db: Session = Depends(get_db)):
+def list_datasets(
+    organization_id: UUID, 
+    project_id: UUID, 
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN, 
+            ROLE_ANALYST,
+        )
+    ), 
+    db: Session = Depends(get_db),
+):
 
     project_repository = ProjectRepository(db)
 
@@ -80,7 +102,18 @@ def list_datasets(organization_id: UUID, project_id: UUID, membership: Organizat
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}",
     response_model=DatasetResponse,
 )
-def get_dataset(organization_id: UUID, project_id: UUID, dataset_id: UUID, membership: OrganizationMember = Depends(require_organization_role(ROLE_ADMIN, ROLE_ANALYST)), db: Session = Depends(get_db)):
+def get_dataset(
+    organization_id: UUID, 
+    project_id: UUID, 
+    dataset_id: UUID, 
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN, 
+            ROLE_ANALYST,
+        )
+    ), 
+    db: Session = Depends(get_db),
+):
     dataset_repository = DatasetRepository(db)
 
     dataset = dataset_repository.get_by_id_in_project(
@@ -102,7 +135,17 @@ def get_dataset(organization_id: UUID, project_id: UUID, dataset_id: UUID, membe
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/archive",
     response_model=DatasetResponse,
 )
-def archive_dataset(organization_id: UUID, project_id: UUID, dataset_id: UUID, membership: OrganizationMember = Depends(require_organization_role(ROLE_ADMIN)), db: Session = Depends(get_db)):
+def archive_dataset(
+    organization_id: UUID, 
+    project_id: UUID, 
+    dataset_id: UUID, 
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+        )
+    ), 
+    db: Session = Depends(get_db),
+):
 
     dataset_repository = DatasetRepository(db)
 

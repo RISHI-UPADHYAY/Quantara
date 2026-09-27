@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 class DatasetCreate(BaseModel):
     name: str = Field(
@@ -9,6 +10,11 @@ class DatasetCreate(BaseModel):
     )
 
     description: str | None = None
+
+    dataset_type: Literal[
+        "execution",
+        "market_data",
+    ]
 
     asset_class: str = Field(
         min_length=2,
@@ -40,6 +46,8 @@ class DatasetResponse(BaseModel):
 
     name: str
     description: str | None
+
+    dataset_type: str
 
     asset_class: str
     market: str

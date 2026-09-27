@@ -33,6 +33,7 @@ class ExecutionOrderRepository:
         venue: str | None = None,
         status: str = "pending",
         completed_at = None,
+        commit: bool = True,
     ) -> ExecutionOrder:
 
         order = ExecutionOrder(
@@ -55,8 +56,13 @@ class ExecutionOrderRepository:
         )
 
         self.db.add(order)
-        self.db.commit()
-        self.db.refresh(order)
+        
+        if commit:
+            self.db.commit()
+            self.db.refresh(order)
+
+        else:
+            self.db.flush()
 
         return order
 

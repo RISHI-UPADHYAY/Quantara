@@ -6,13 +6,14 @@ import csv
 import json
 
 import uuid
+from uuid import UUID
 from datetime import datetime, timezone
 
 from io import StringIO
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Depends, Query, status
+from fastapi import APIRouter, HTTPException, Depends, Query, status, File, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
@@ -57,6 +58,7 @@ from app.schemas.execution_analytics import (
     ExecutionAnalyticsRequest,
     ExecutionAnalyticsResponse,
 )
+from app.schemas.execution_data_bridge import ExecutionDataImportResponse
 from app.services.execution import (
     ExecutionService, 
     TCAEngine, 
@@ -66,6 +68,8 @@ from app.services.execution import (
 )
 from app.services.execution.tca_preflight import TCAPreflightService
 from app.services.execution.execution_review_persistence_service import ExecutionReviewPersistenceService
+from app.services.execution.execution_data_bridge import ExecutionDataBridgeService
+from app.services.storage import LocalStorageService
 
 
 ALLOWED_REVIEW_TRANSITIONS = {
@@ -75,6 +79,10 @@ ALLOWED_REVIEW_TRANSITIONS = {
     "RESOLVED": set(),
     "IGNORED": set(),
 }
+
+STORAGE_ROOT = (
+    Path(__file__).resolve().parents[4] / "storage"
+).resolve()
 
 
 router = APIRouter()
@@ -1776,4 +1784,101 @@ def calculate_execution_analytics(
         start_time=request.start_time,
         end_time=request.end_time,
         limit=request.limit,
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/"
+    "{dataset_id}/versions/{dataset_version_id}/execution/import",
+    response_model=ExecutionDataImportResponse,
+    status_code=status.HTTP_200_OK,
+)
+def import_execution_dataset(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    dataset_version_id: uuid.UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    dataset_repository = DatasetRepository(db)
+
+    dataset = dataset_repository.get_by_id_in_project(
+        dataset_id=dataset_id,
+        organization_id=organization_id,
+        project_id=project_id,
+    )
+
+    if dataset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset not found.",
+        )
+
+    if dataset.is_archived:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot import execution data from an archived dataset.",
+        )
+
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset_version = (
+        dataset_version_repository.get_by_id_for_dataset(
+            dataset_version_id=dataset_version_id,
+            dataset_id=dataset_id,
+        )
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset version not found.",
+        )
+
+    if not dataset_version.storage_uri:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Dataset version has no storage URI.",
+        )
+
+    storage = LocalStorageService(
+        base_path=STORAGE_ROOT,
+    )
+
+    try:
+        file_path = storage.get(
+            dataset_version.storage_uri,
+        )
+
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stored dataset file not found.",
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    bridge = ExecutionDataBridgeService(db)
+
+    result = bridge.import_csv(
+        file_path=file_path,
+        organization_id=organization_id,
+        project_id=project_id,
+        created_by=membership.user_id,
+    )
+
+    return ExecutionDataImportResponse(
+        dataset_version_id=dataset_version.id,
+        **result,
     )

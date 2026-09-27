@@ -53,6 +53,12 @@ class Dataset(Base):
         nullable=True,
     )
 
+    dataset_type: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        index=True,
+    )
+
     asset_class: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
