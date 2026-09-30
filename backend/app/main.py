@@ -26,6 +26,8 @@ from app.api.v1.organizations.data_profiling import router as data_profiling_rou
 from app.api.v1.organizations.analysis import router as analysis_router
 from app.api.v1.organizations.execution import router as execution_router
 
+from app.api.v1.organizations.pilot_workspace import router as pilot_workspace_router
+
 app = FastAPI(
     title = "Quantara API",
     version = "1.0.0"
@@ -167,6 +169,12 @@ app.include_router(
     execution_router,
     prefix="/api/v1/organizations",
     tags=["Execution"],
+)
+
+app.include_router(
+    pilot_workspace_router,
+    prefix="/api/v1/organizations",
+    tags=["Pilot Workspace"],
 )
 
 @app.get("/")
