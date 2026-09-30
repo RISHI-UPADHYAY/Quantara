@@ -101,6 +101,9 @@ def _record_review_activity(
 
     repository = ExecutionReviewActivityRepository(db)
 
+    if comment is None:
+        comment = f"Execution review activity: {activity_type}"
+
     repository.create_activity(
         organization_id=organization_id,
         project_id=project_id,
@@ -1347,12 +1350,6 @@ def update_execution_review_issue(
     ):
         activity_type = "STATUS_CHANGED"
 
-        if update.status == "RESOLVED":
-            activity_type = "RESOLVED"
-
-        elif update.status == "IGNORED":
-            activity_type = "IGNORED"
-
         _record_review_activity(
             db=db,
             organization_id=organization_id,
@@ -1360,6 +1357,10 @@ def update_execution_review_issue(
             review_issue_id=issue.id,
             author_id = membership.user_id,
             activity_type=activity_type,
+            comment=(
+                f"Review status changed from "
+                f"{previous_status} to {update.status}."
+            ),
             activity_metadata={
                 "previous_status": previous_status,
                 "new_status": update.status,
@@ -1377,6 +1378,7 @@ def update_execution_review_issue(
             review_issue_id=issue.id,
             author_id=membership.user_id,
             activity_type="ASSIGNED",
+            comment=f"Review issue assigned to {update.assigned_to}.",
             activity_metadata={
                 "previous_assigned_to": (
                     str(previous_assigned_to)
