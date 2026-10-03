@@ -694,6 +694,43 @@ def analyze_beta(
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
+    # Market-data datasets may expose the price field as `price`
+    # rather than `close`. Normalize it at the API boundary so
+    # the existing BetaAnalyzer can operate on `close`.
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    # Beta is calculated from returns, so observations must be
+    # processed chronologically.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                ["symbol", "timestamp"],
+            )
+            .reset_index(
+                drop=True,
+            )
+        )
+
     try:
         result = BetaAnalyzer().analyze(
             dataframe=dataframe,
