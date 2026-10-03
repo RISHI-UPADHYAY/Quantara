@@ -172,6 +172,42 @@ def analyze_returns(
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
+    # Market-data datasets may expose the price field as `price`
+    # rather than `close`. The existing ReturnAnalyzer operates on the canonical `close`
+    # field, so normalize the dataframe at the API boundary without modifying the analyzer.
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    #Returns must follow chronological order.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                "timestamp"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
+
     try:
         result = ReturnAnalyzer().analyze(dataframe)
 
