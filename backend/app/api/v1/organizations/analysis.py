@@ -25,6 +25,7 @@ from app.schemas.analysis import (
     SortinoAnalysisRequest,
     VaRAnalysisRequest,
 )
+from app.schemas.performace_comparison import PerformanceComparisonRequest
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
 from app.services.analysis.correlation_analyzer import CorrelationAnalyzer
@@ -38,6 +39,7 @@ from app.services.analysis.sharpe_analyzer import SharpeAnalyzer
 from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
 from app.services.analysis.cvar_analyzer import CVaRAnalyzer
+from app.services.analysis.performance_comparison_service import PerformanceComparisonService
 
 
 router = APIRouter()
@@ -1103,3 +1105,94 @@ def get_analysis_run(
         )
 
     return analysis_run
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/performance-comparison",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_performance_comparison(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: PerformanceComparisonRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    """
+    Compare performance and risk characteristics across multiple instruments.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    #Market-data datasets may expose the price field as `price` rather than `close`
+    if (
+        "close" not in dataframe.columns
+        and "price" in dataframe.columns
+    ):
+
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    #Performance metrics must be calculated chronologically.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values."
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                ["symbol", "timestamp"],
+            )
+            .reset_index(
+                drop=True,
+            )
+        )
+
+    try:
+
+        result = PerformanceComparisonService().compare(
+            dataframe=dataframe,
+            symbols=data.symbols,
+            periods_per_year=data.periods_per_year,
+        )
+
+        return {
+            "result": result,
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
