@@ -428,7 +428,7 @@ def analyze_drawdown(
     Analyze maximum drawdown and recovery characteristics.
     """
 
-    dataset = _validate_dataset(
+    _validate_dataset(
         organization_id,
         project_id,
         dataset_id,
@@ -438,6 +438,43 @@ def analyze_drawdown(
 
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
+
+    #Market-data datasets may expose the price field as `price`
+    #rather than `close`. Normalize it at the API booundary so
+    #the existing VolatilityAnalyzer can operate on the canonical `close` field.
+    
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+    
+    #Keep the volatility calculation chronological when timestamps are available
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+    
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+    
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                "timestamp"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
 
     try:
         result = DrawdownAnalyzer().analyze(dataframe)
