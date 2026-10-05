@@ -25,6 +25,10 @@ from app.schemas.analysis import (
     SortinoAnalysisRequest,
     VaRAnalysisRequest,
 )
+from app.schemas.visualization import (
+    VisualizationRequest,
+    VisualizationResponse,
+)
 from app.schemas.performace_comparison import PerformanceComparisonRequest
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
@@ -40,6 +44,7 @@ from app.services.analysis.sortino_analyzer import SortinoAnalyzer
 from app.services.analysis.var_analyzer import VaRAnalyzer
 from app.services.analysis.cvar_analyzer import CVaRAnalyzer
 from app.services.analysis.performance_comparison_service import PerformanceComparisonService
+from app.services.visualization.visualization_service import VisualizationService
 
 
 router = APIRouter()
@@ -1196,3 +1201,90 @@ def analyze_performance_comparison(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/visualization",
+    status_code=status.HTTP_201_CREATED,
+    response_model=VisualizationResponse,
+)
+def analyze_visualization(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: VisualizationRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    _validate_dataset(
+        organization_id=organization_id,
+        project_id=project_id,
+        dataset_id=dataset_id,
+        membership=membership,
+        db=db,
+    )
+
+    try:
+        file_path = _resolve_file(data.file_path)
+        dataframe = _load_dataframe(file_path)
+
+        if "price" in dataframe.columns and "close" not in dataframe.columns:
+            dataframe = dataframe.rename(
+                columns={
+                    "price": "close",
+                }
+            )
+
+        if "timestamp" not in dataframe.columns:
+            raise ValueError(
+                "Required column 'timestamp' is missing."
+            )
+
+        if "symbol" not in dataframe.columns:
+            raise ValueError(
+                "Required column 'symbol' is missing."
+            )
+
+        dataframe["timestamp"] = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if dataframe["timestamp"].isna().any():
+            raise ValueError(
+                "Timestamp column contains invalid or null values."
+            )
+
+        dataframe["symbol"] = (
+            dataframe["symbol"]
+            .astype(str)
+            .str.strip()
+        )
+
+        dataframe = (
+            dataframe
+            .sort_values(["symbol", "timestamp"])
+            .reset_index(drop=True)
+        )
+
+        result = VisualizationService().build(
+            dataframe=dataframe,
+            symbols=data.symbols,
+            chart_type=data.chart_type,
+            periods_per_year=data.periods_per_year,
+        )
+
+        return result
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
