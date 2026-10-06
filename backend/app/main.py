@@ -25,6 +25,7 @@ from app.api.v1.organizations.ingestions import router as ingestions_router
 from app.api.v1.organizations.data_profiling import router as data_profiling_router
 from app.api.v1.organizations.analysis import router as analysis_router
 from app.api.v1.organizations.market_data_explorer import router as market_data_explorer_router
+from app.api.v1.organizations.research_copilot import router as research_copilot_router
 
 app = FastAPI(
     title = "Quantara API",
@@ -167,6 +168,12 @@ app.include_router(
     market_data_explorer_router,
     prefix="/api/v1/organizations",
     tags=["Market Data Explorer"],
+)
+
+app.include_router(
+    research_copilot_router,
+    prefix="/api/v1/organizations",
+    tags=["Research Copilot"],
 )
 
 @app.get("/")
