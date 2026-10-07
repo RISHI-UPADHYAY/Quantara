@@ -19,9 +19,16 @@ from app.schemas.research_copilot import (
     ResearchCopilotResponse,
     ResearchEvidence,
 )
+from app.schemas.research_insights import (
+    ResearchInsight,
+    ResearchInsightsRequest,
+    ResearchInsightsResponse,
+)
 from app.services.research.ollama_provider import OllamaProvider
 from app.services.research.research_context_service import ResearchContextService
 from app.services.research.research_copilot_service import ResearchCopilotService
+from app.services.research.ai_research_insights_service import AIResearchInsightsService
+from app.services.research.research_insights_service import ResearchInsightsService
 
 
 router = APIRouter()
@@ -131,6 +138,23 @@ def _resolve_dataset_version(
         versions,
         key=lambda version: version.version,
     )
+
+def _validate_file_path(
+    *,
+    requested_file_path: str,
+    dataset_version_storage_uri: str,
+) -> None:
+
+    requested = Path(requested_file_path).as_posix().lstrip("/")
+    stored = Path(dataset_version_storage_uri).as_posix().lstrip("/")
+
+    if requested != stored:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "file_path does not match the selected dataset version."
+            ),
+        )
 
 
 @router.post(
@@ -242,4 +266,152 @@ def research_copilot(
             for item in result.get("evidence", [])
         ],
         context=result["context"],
+    )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/research/insights",
+    response_model=ResearchInsightsResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def research_insights(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    dataset_id: uuid.UUID,
+    data: ResearchInsightsRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    dataset = _validate_dataset(
+        organization_id=organization_id,
+        project_id=project_id,
+        dataset_id=dataset_id,
+        db=db,
+    )
+
+    dataset_version = _resolve_dataset_version(
+        dataset=dataset,
+        dataset_version_id=data.dataset_version_id,
+    )
+
+    storage_uri = getattr(
+        dataset_version,
+        "storage_uri",
+        None,
+    )
+
+    if not storage_uri:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Dataset version does not have a storage URI.",
+        )
+
+    requested_file_path = Path(data.file_path)
+
+    if requested_file_path.is_absolute():
+        file_path = requested_file_path.resolve()
+
+        if (
+            file_path != RESEARCH_ROOT
+            and RESEARCH_ROOT not in file_path.parents
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid research file path.",
+            )
+    else:
+        file_path = _resolve_file(
+            data.file_path,
+        )
+
+    expected_file_path = _resolve_file(
+        storage_uri,
+    )
+
+    if file_path != expected_file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "The supplied file_path does not match the selected "
+                "dataset version."
+            ),
+        )
+
+    dataframe = _load_dataframe(
+        file_path,
+    )
+
+    context_service = ResearchContextService()
+
+    try:
+        context_result = context_service.build(
+            dataframe=dataframe,
+            question=(
+                "Generate structured research insights from the "
+                "available quantitative evidence."
+            ),
+            file_path=str(file_path),
+            symbols=data.symbols,
+            periods_per_year=data.periods_per_year,
+        )
+
+        insights_service = ResearchInsightsService()
+
+        raw_insights = insights_service.generate(
+            context_result=context_result,
+        )
+
+        insights = [
+            ResearchInsight(**item)
+            for item in raw_insights
+        ]
+
+        ai_summary = None
+        provider_name = None
+
+        if data.include_ai_summary:
+            provider = OllamaProvider()
+
+            ai_service = AIResearchInsightsService(
+                provider=provider,
+            )
+
+            ai_summary = ai_service.generate_summary(
+                insights=raw_insights,
+                context=context_result.get(
+                    "context",
+                    {},
+                ),
+            )
+
+            provider_name = provider.name
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    return ResearchInsightsResponse(
+        dataset_id=dataset.id,
+        dataset_version_id=dataset_version.id,
+        symbols=data.symbols or [],
+        insights=insights,
+        ai_summary=ai_summary,
+        provider=provider_name,
+        context=context_result.get(
+            "context",
+            {},
+        ),
     )
