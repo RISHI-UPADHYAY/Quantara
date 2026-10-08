@@ -252,6 +252,18 @@ class CovarianceAnalyzer:
         covariance_matrix: pd.DataFrame,
         symbols: list[str],
     ) -> dict[str, Any]:
+        """
+        Extract strongest positive and negative covariance relationships.
+
+        A strongest positive relationship is selected only from positive
+        covariance values.
+
+        A strongest negative relationship is selected only from negative 
+        covariance values.
+
+        Undefined covariance values are ignored for relationship
+        selection but do not create valid relationships.
+        """
 
         pairs: list[dict[str, Any]] = []
 
@@ -282,14 +294,34 @@ class CovarianceAnalyzer:
                 "pair_count": 0,
             }
 
-        strongest_positive = max(
-            pairs,
-            key=lambda pair: pair["covariance"],
+        positive_pairs = [
+            pair
+            for pair in pairs
+            if pair["covariance"] > 0
+        ]
+
+        negative_pairs = [
+            pair
+            for pair in pairs
+            if pair["covariance"] < 0
+        ]
+
+        strongest_positive = (
+            max(
+                positive_pairs,
+                key=lambda pair: pair["covariance"],
+            )
+            if positive_pairs
+            else None
         )
 
-        strongest_negative = min(
-            pairs,
-            key=lambda pair: pair["covariance"],
+        strongest_negative = (
+            min(
+                negative_pairs,
+                key=lambda pair: pair["covariance"],
+            )
+            if negative_pairs
+            else None
         )
 
         return {

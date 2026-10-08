@@ -187,7 +187,9 @@ class DataQualityReportBuilder:
         }
 
     @staticmethod
-    def _calculate_score(checks: list[dict[str, Any]]) -> float:
+    def _calculate_score(
+        checks: list[dict[str, Any]],
+    ) -> float:
 
         applicable_checks = [
             check
@@ -200,7 +202,7 @@ class DataQualityReportBuilder:
 
         total = sum(
             check["score"]
-            for check in checks
+            for check in applicable_checks
         )
 
         return round(
