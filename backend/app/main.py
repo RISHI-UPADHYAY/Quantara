@@ -28,6 +28,8 @@ from app.api.v1.organizations.execution import router as execution_router
 
 from app.api.v1.organizations.pilot_workspace import router as pilot_workspace_router
 
+from app.api.v1.organizations.research_workspace import router as research_workspace_router
+
 app = FastAPI(
     title = "Quantara API",
     version = "1.0.0"
@@ -169,6 +171,12 @@ app.include_router(
     execution_router,
     prefix="/api/v1/organizations",
     tags=["Execution"],
+)
+
+app.include_router(
+    research_workspace_router,
+    prefix="/api/v1/organizations",
+    tags=["Research Workspace"],
 )
 
 app.include_router(
