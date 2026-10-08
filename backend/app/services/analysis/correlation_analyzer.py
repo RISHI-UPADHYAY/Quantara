@@ -336,11 +336,17 @@ class CorrelationAnalyzer:
     ) -> dict[str, Any]:
         """
         Extract strongest positive and negative relationships.
-
+        
         Every possible symbol pair contributes to pair_count,
         including pairs whose Pearson correlation is undefined.
-
+        
         Undefined correlations are represented by None.
+        
+        A strongest positive relationship is selected only from positive
+        correlations.
+        
+        A strongest negative relationship is selected only from negative 
+        correlations.
         """
 
         all_pairs: list[dict[str, Any]] = []
@@ -407,22 +413,34 @@ class CorrelationAnalyzer:
                 "pair_count": len(all_pairs),
             }
 
-        # ------------------------------------------------------------
-        # Strongest positive relationship
-        # ------------------------------------------------------------
+        positive_pairs = [
+            pair
+            for pair in valid_pairs
+            if pair["correlation"] > 0
+        ]
 
-        strongest_positive = max(
-            valid_pairs,
-            key=lambda pair: pair["correlation"],
+        negative_pairs = [
+            pair
+            for pair in valid_pairs
+            if pair["correlation"] < 0
+        ]
+
+        strongest_positive = (
+            max(
+                positive_pairs,
+                key=lambda pair: pair["correlation"],
+            )
+            if positive_pairs
+            else None
         )
 
-        # ------------------------------------------------------------
-        # Strongest negative relationship
-        # ------------------------------------------------------------
-
-        strongest_negative = min(
-            valid_pairs,
-            key=lambda pair: pair["correlation"],
+        strongest_negative = (
+            min(
+                negative_pairs,
+                key=lambda pair: pair["correlation"],
+            )
+            if negative_pairs
+            else None
         )
 
         return {

@@ -28,6 +28,11 @@ from app.schemas.analysis import (
     PortfolioStressAnalysisRequest,
     PortfolioNamedScenarioAnalysisRequest,
 )
+from app.schemas.visualization import (
+    VisualizationRequest,
+    VisualizationResponse,
+)
+from app.schemas.performace_comparison import PerformanceComparisonRequest
 from app.services.analysis.return_analyzer import ReturnAnalyzer
 from app.services.analysis.volatility_analyzer import VolatilityAnalyzer
 from app.services.analysis.correlation_analyzer import CorrelationAnalyzer
@@ -44,6 +49,8 @@ from app.services.analysis.cvar_analyzer import CVaRAnalyzer
 from app.services.analysis.portfolio.portfolio_risk_engine import PortfolioRiskEngine
 from app.services.analysis.portfolio.portfolio_stress_engine import PortfolioStressEngine
 from app.services.analysis.portfolio.portfolio_validator import PortfolioValidationError
+from app.services.analysis.performance_comparison_service import PerformanceComparisonService
+from app.services.visualization.visualization_service import VisualizationService
 
 
 router = APIRouter()
@@ -178,6 +185,42 @@ def analyze_returns(
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
+    # Market-data datasets may expose the price field as `price`
+    # rather than `close`. The existing ReturnAnalyzer operates on the canonical `close`
+    # field, so normalize the dataframe at the API boundary without modifying the analyzer.
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    #Returns must follow chronological order.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                "timestamp"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
+
     try:
         result = ReturnAnalyzer().analyze(dataframe)
 
@@ -204,7 +247,7 @@ def analyze_volatility(
     data: VolatilityAnalysisRequest,
     membership: OrganizationMember = Depends(
         require_organization_role(
-            ROLE_ADMIN, 
+            ROLE_ADMIN,
             ROLE_ANALYST,
         )
     ),
@@ -214,7 +257,7 @@ def analyze_volatility(
     Analyze periodic and annualized volatility.
     """
 
-    dataset = _validate_dataset(
+    _validate_dataset(
         organization_id,
         project_id,
         dataset_id,
@@ -224,6 +267,43 @@ def analyze_volatility(
 
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
+
+    #Market-data datasets may expose the price field as `price`
+    #rather than `close`. Normalize it at the API booundary so
+    #the existing VolatilityAnalyzer can operate on the canonical `close` field.
+
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    #Keep the volatility calculation chronological when timestamps are available
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                "timestamp"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
 
     try:
         result = VolatilityAnalyzer().analyze(
@@ -256,7 +336,7 @@ def analyze_correlation(
     data: AnalysisRequest,
     membership: OrganizationMember = Depends(
         require_organization_role(
-            ROLE_ADMIN, 
+            ROLE_ADMIN,
             ROLE_ANALYST,
         )
     ),
@@ -264,7 +344,7 @@ def analyze_correlation(
 ):
     "Analyze Pearson correlation between symbol returns."
 
-    dataset = _validate_dataset(
+    _validate_dataset(
         organization_id,
         project_id,
         dataset_id,
@@ -274,6 +354,43 @@ def analyze_correlation(
 
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
+
+    # Market-data datasets may expose the price field as `price`
+    # rather than `close`. Normalize it at the API boundary so
+    # the existing CorrelationAnalyzer can operate on `close`.
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    # Correlation is calculated from returns, so observations
+    # must be processed chronologically.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                ["symbol", "timestamp"]
+            )
+            .reset_index(
+                drop=True
+            )
+        )
 
     try:
         result = CorrelationAnalyzer().analyze(dataframe)
@@ -313,7 +430,7 @@ def analyze_covariance(
     Analyze sample covariance between symbol returns.
     """
 
-    dataset = _validate_dataset(
+    _validate_dataset(
         organization_id,
         project_id,
         dataset_id,
@@ -323,6 +440,43 @@ def analyze_covariance(
 
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
+
+    # Market-data datasets may expose the price field as `price`
+    # rather than `close`. Normalize it at the API boundary so
+    # the existing CorrelationAnalyzer can operate on `close`.
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    # Correlation is calculated from returns, so observations
+    # must be processed chronologically.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                ["symbol", "timestamp"]
+            )
+            .reset_index(
+                drop=True
+            )
+        )
 
     try:
         result = CovarianceAnalyzer().analyze(dataframe)
@@ -361,7 +515,7 @@ def analyze_drawdown(
     Analyze maximum drawdown and recovery characteristics.
     """
 
-    dataset = _validate_dataset(
+    _validate_dataset(
         organization_id,
         project_id,
         dataset_id,
@@ -372,6 +526,43 @@ def analyze_drawdown(
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
+    #Market-data datasets may expose the price field as `price`
+    #rather than `close`. Normalize it at the API booundary so
+    #the existing VolatilityAnalyzer can operate on the canonical `close` field.
+
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    #Keep the volatility calculation chronological when timestamps are available
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                "timestamp"
+            )
+            .reset_index(
+                drop=True
+            )
+        )
+
     try:
         result = DrawdownAnalyzer().analyze(dataframe)
 
@@ -379,7 +570,7 @@ def analyze_drawdown(
             "result": result,
         }
 
-    except (ValueError, TypeError) as exc: 
+    except (ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -427,7 +618,7 @@ def analyze_volume(
             "result": result,
         }
 
-    except (ValueError, TypeError) as exc: 
+    except (ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -475,7 +666,7 @@ def analyze_price_range(
             "result": result,
         }
 
-    except (ValueError, TypeError) as exc: 
+    except (ValueError, TypeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
@@ -516,6 +707,43 @@ def analyze_beta(
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
+    # Market-data datasets may expose the price field as `price`
+    # rather than `close`. Normalize it at the API boundary so
+    # the existing BetaAnalyzer can operate on `close`.
+    if "close" not in dataframe.columns and "price" in dataframe.columns:
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    # Beta is calculated from returns, so observations must be
+    # processed chronologically.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values.",
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                ["symbol", "timestamp"],
+            )
+            .reset_index(
+                drop=True,
+            )
+        )
+
     try:
         result = BetaAnalyzer().analyze(
             dataframe=dataframe,
@@ -532,7 +760,7 @@ def analyze_beta(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
-    
+
 ##Sortino Analyzer
 @router.post(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/sortino",
@@ -565,7 +793,7 @@ def analyze_sortino(
     path = _resolve_file(data.file_path)
     dataframe = _load_dataframe(path)
 
-    try: 
+    try:
         result = SortinoAnalyzer().analyze(
             dataframe=dataframe,
             periods_per_year=data.periods_per_year,
@@ -823,7 +1051,7 @@ def analyze_portfolio_stress(
     data: PortfolioStressAnalysisRequest,
     membership: OrganizationMember = Depends(
         require_organization_role(
-            ROLE_ADMIN, 
+            ROLE_ADMIN,
             ROLE_ANALYST,
         )
     ),
@@ -971,7 +1199,7 @@ def create_analysis_run(
         project_id,
         dataset_id,
         membership,
-        db,   
+        db,
     )
 
     path = _resolve_file(data.file_path)
@@ -982,7 +1210,7 @@ def create_analysis_run(
 
     try:
         return service.run(
-            dataframe=dataframe,    
+            dataframe=dataframe,
             organization_id=organization_id,
             project_id=project_id,
             dataset_id=dataset_id,
@@ -1009,7 +1237,7 @@ def list_analysis_runs(
     dataset_id: UUID,
     membership: OrganizationMember = Depends(
         require_organization_role(
-            ROLE_ADMIN, 
+            ROLE_ADMIN,
             ROLE_ANALYST,
         )
     ),
@@ -1082,3 +1310,181 @@ def get_analysis_run(
         )
 
     return analysis_run
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/performance-comparison",
+    response_model=AnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyze_performance_comparison(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: PerformanceComparisonRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    """
+    Compare performance and risk characteristics across multiple instruments.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    path = _resolve_file(data.file_path)
+    dataframe = _load_dataframe(path)
+
+    #Market-data datasets may expose the price field as `price` rather than `close`
+    if (
+        "close" not in dataframe.columns
+        and "price" in dataframe.columns
+    ):
+
+        dataframe = dataframe.rename(
+            columns={
+                "price": "close",
+            }
+        )
+
+    #Performance metrics must be calculated chronologically.
+    if "timestamp" in dataframe.columns:
+        timestamp = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if timestamp.isna().any():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Timestamp column contains invalid or null values."
+            )
+
+        dataframe = (
+            dataframe.assign(
+                timestamp=timestamp,
+            )
+            .sort_values(
+                ["symbol", "timestamp"],
+            )
+            .reset_index(
+                drop=True,
+            )
+        )
+
+    try:
+
+        result = PerformanceComparisonService().compare(
+            dataframe=dataframe,
+            symbols=data.symbols,
+            periods_per_year=data.periods_per_year,
+        )
+
+        return {
+            "result": result,
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/visualization",
+    status_code=status.HTTP_201_CREATED,
+    response_model=VisualizationResponse,
+)
+def analyze_visualization(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    data: VisualizationRequest,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    _validate_dataset(
+        organization_id=organization_id,
+        project_id=project_id,
+        dataset_id=dataset_id,
+        membership=membership,
+        db=db,
+    )
+
+    try:
+        file_path = _resolve_file(data.file_path)
+        dataframe = _load_dataframe(file_path)
+
+        if "price" in dataframe.columns and "close" not in dataframe.columns:
+            dataframe = dataframe.rename(
+                columns={
+                    "price": "close",
+                }
+            )
+
+        if "timestamp" not in dataframe.columns:
+            raise ValueError(
+                "Required column 'timestamp' is missing."
+            )
+
+        if "symbol" not in dataframe.columns:
+            raise ValueError(
+                "Required column 'symbol' is missing."
+            )
+
+        dataframe["timestamp"] = pd.to_datetime(
+            dataframe["timestamp"],
+            errors="coerce",
+            utc=True,
+        )
+
+        if dataframe["timestamp"].isna().any():
+            raise ValueError(
+                "Timestamp column contains invalid or null values."
+            )
+
+        dataframe["symbol"] = (
+            dataframe["symbol"]
+            .astype(str)
+            .str.strip()
+        )
+
+        dataframe = (
+            dataframe
+            .sort_values(["symbol", "timestamp"])
+            .reset_index(drop=True)
+        )
+
+        result = VisualizationService().build(
+            dataframe=dataframe,
+            symbols=data.symbols,
+            chart_type=data.chart_type,
+            periods_per_year=data.periods_per_year,
+        )
+
+        return result
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
