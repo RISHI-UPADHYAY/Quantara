@@ -72,6 +72,8 @@ class AnalysisService:
         "portfolio_stress": PortfolioStressEngine,
     }
 
+    PROVENANCE_SCHEMA_VERSION = 1
+    ANALYSIS_ENGINE_NAME = "quantara-analysis"
 
     def __init__(
         self,
@@ -91,6 +93,9 @@ class AnalysisService:
         dataset_version_id: uuid.UUID,
         analysis_type: str,
         created_by: uuid.UUID,
+        research_workspace_id: uuid.UUID | None = None,
+        configuration: dict[str, Any] | None = None,
+        reproduced_from_id: uuid.UUID | None = None,
         **parameters: Any,
     ) -> AnalysisRun:
 
@@ -102,6 +107,21 @@ class AnalysisService:
             normalized_analysis_type
         )
 
+        normalized_configuration = dict(
+            configuration or {}
+        )
+
+        provenance = self._build_provenance(
+            organization_id=organization_id,
+            project_id=project_id,
+            dataset_id=dataset_id,
+            dataset_version_id=dataset_version_id,
+            analysis_type=normalized_analysis_type,
+            created_by=created_by,
+            research_workspace_id=research_workspace_id,
+            reproduced_from_id=reproduced_from_id,
+        )
+
         analysis_run = self.repository.create(
             organization_id=organization_id,
             project_id=project_id,
@@ -110,6 +130,9 @@ class AnalysisService:
             analysis_type=normalized_analysis_type,
             created_by=created_by,
             parameters=parameters,
+            configuration=normalized_configuration,
+            provenance=provenance,
+            reproduced_from_id=reproduced_from_id,
             row_count=len(dataframe),
         )
 
@@ -152,6 +175,44 @@ class AnalysisService:
             )
 
             raise
+
+
+    @classmethod
+    def _build_provenance(
+        cls,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        dataset_id: uuid.UUID,
+        dataset_version_id: uuid.UUID,
+        analysis_type: str,
+        created_by: uuid.UUID,
+        research_workspace_id: uuid.UUID | None,
+        reproduced_from_id: uuid.UUID | None,
+    ) -> dict[str, Any]:
+
+        return {
+            "schema_version": cls.PROVENANCE_SCHEMA_VERSION,
+            "engine": {
+                "name": cls.ANALYSIS_ENGINE_NAME,
+            },
+            "organization_id": str(organization_id),
+            "project_id": str(project_id),
+            "dataset_id": str(dataset_id),
+            "dataset_version_id": str(dataset_version_id),
+            "analysis_type": analysis_type,
+            "created_by": str(created_by),
+            "research_workspace_id": (
+                str(research_workspace_id)
+                if research_workspace_id is not None
+                else None
+            ),
+            "reproduced_from_id": (
+                str(reproduced_from_id)
+                if reproduced_from_id is not None
+                else None
+            ),
+        }
 
 
     @staticmethod

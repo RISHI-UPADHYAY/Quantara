@@ -23,19 +23,27 @@ class AnalysisRunRepository:
         dataset_version_id: uuid.UUID,
         analysis_type: str,
         created_by: uuid.UUID,
+        research_workspace_id: uuid.UUID | None,
         parameters: dict | None = None,
+        configuration: dict | None = None,
+        provenance: dict | None = None,
+        reproduced_from_id: uuid.UUID | None = None,
         row_count: int | None = None,
     ) -> AnalysisRun:
 
         analysis_run = AnalysisRun(
             organization_id=organization_id,
             project_id=project_id,
+            research_workspace_id=research_workspace_id,
             dataset_id=dataset_id,
             dataset_version_id=dataset_version_id,
             analysis_type=analysis_type,
             status="pending",
             created_by=created_by,
             parameters=parameters or {},
+            configuration=configuration or {},
+            provenance=provenance or {},
+            reproduced_from_id=reproduced_from_id,
             row_count=row_count,
         )
 
@@ -126,6 +134,39 @@ class AnalysisRunRepository:
             )
             .order_by(
                 AnalysisRun.created_at.desc()
+            )
+            .all()
+        )
+
+
+    def get_reproduction_source(
+        self,
+        *,
+        analysis_run_id: uuid.UUID,
+    ) -> AnalysisRun | None:
+
+        return (
+            self.db.query(AnalysisRun)
+            .filter(
+                AnalysisRun.id == analysis_run_id
+            )
+            .first()
+        )
+
+
+    def list_reproduction(
+        self,
+        *,
+        analysis_run_id: uuid.UUID,
+    ) -> list[AnalysisRun]:
+
+        return (
+            self.db.query(AnalysisRun)
+            .filter(
+                AnalysisRun.reproduced_from_id == analysis_run_id
+            )
+            .order_by(
+                AnalysisRun.created_at.asc()
             )
             .all()
         )

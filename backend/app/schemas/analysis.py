@@ -65,6 +65,8 @@ class AnalysisRunRequest(BaseModel):
     file_path: str
     dataset_version_id: uuid.UUID
 
+    research_workspace_id: uuid.UUID | None
+
     analysis_type: str = Field(
         min_length=1,
         max_length=100,
@@ -72,6 +74,10 @@ class AnalysisRunRequest(BaseModel):
 
     parameters: dict[str, Any] = Field(
         default_factory=dict
+    )
+
+    configuration: dict[str, Any] = Field(
+        default_factory=dict,
     )
 
 
@@ -83,10 +89,21 @@ class AnalysisRunResponse(BaseModel):
     id: uuid.UUID
     organization_id: uuid.UUID
     project_id: uuid.UUID
+
+    research_workspace_id: uuid.UUID | None
+
     dataset_id: uuid.UUID
     dataset_version_id: uuid.UUID
+
     analysis_type: str
+    
     parameters: dict[str, Any]
+
+    configuration: dict[str, Any]
+    provenance: dict[str, Any]
+
+    reproduced_from_id: uuid.UUID | None
+    
     status: str
     result: dict[str, Any] | None   
     error_message: str | None   

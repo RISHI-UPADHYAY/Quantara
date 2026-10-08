@@ -33,6 +33,15 @@ class AnalysisRun(Base):
         index=True,
     )
 
+    research_workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "research_workspaces.id",
+        ),
+        nullable=True,
+        index=True,
+    )
+
     dataset_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("datasets.id"),
@@ -69,6 +78,27 @@ class AnalysisRun(Base):
         JSONB,
         nullable=False,
         default=dict,
+    )
+
+    configuration: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    provenance: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+    )
+
+    reproduced_from_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "analysis_runs.id",
+        ),
+        nullable=True,
+        index=True,
     )
 
     error_message: Mapped[str | None] = mapped_column(
