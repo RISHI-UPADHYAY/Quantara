@@ -29,6 +29,7 @@ from app.schemas.analysis import (
     PortfolioStressAnalysisRequest,
     PortfolioNamedScenarioAnalysisRequest,
 )
+from app.schemas.research_report import ResearchReportResponse
 from app.schemas.visualization import (
     VisualizationRequest,
     VisualizationResponse,
@@ -53,6 +54,7 @@ from app.services.analysis.portfolio.portfolio_validator import PortfolioValidat
 from app.services.analysis.performance_comparison_service import PerformanceComparisonService
 from app.services.visualization.visualization_service import VisualizationService
 from app.services.execution.market_data_loader import ExecutionMarketDataLoader
+from app.services.research.research_report_service import ResearchReportService
 
 router = APIRouter()
 
@@ -1721,6 +1723,80 @@ def analyze_visualization(
         return result
 
     except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs/{run_id}/report",
+    response_model=ResearchReportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def generate_research_report(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    run_id: UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    """
+    Generate an institutional research report from a completed analysis run.
+    """
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    repository = AnalysisRunRepository(db)
+
+    analysis_run = repository.get_by_id(
+        analysis_run_id=run_id,
+    )
+
+    if analysis_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found.",
+        )
+
+    if (
+        analysis_run.organization_id != organization_id
+        or analysis_run.project_id != project_id
+        or analysis_run.dataset_id != dataset_id
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found.",
+        )
+
+    if analysis_run.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Research"
+        )
+
+    try:
+        report = ResearchReportService().generate(
+            analysis_run=analysis_run,
+        )
+
+        return report
+
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
