@@ -15,9 +15,11 @@ from app.schemas.research_workspace import (
     ResearchWorkspaceResponse,
     ResearchWorkspaceUpdateRequest,
 )
+from app.schemas.research_dashboard import ResearchDashboardSummary
 from app.services.research.research_workspace_service import (
     ResearchWorkspaceService,
 )
+from app.services.research.research_dashboard_service import ResearchDashboardService
 
 
 router = APIRouter()
@@ -233,3 +235,55 @@ def delete_research_workspace(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
+
+
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/research-workspaces/{workspace_id}/dashboard",
+    response_model=ResearchDashboardSummary,
+    status_code=status.HTTP_200_OK,
+)
+def get_research_workspace_dashboard(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    limit: int = 10,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+):
+
+    if limit < 1 or limit > 100:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="limit must be between 1 and 100.",
+        )
+
+    if offset < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="offset must be non-negative.",
+        )
+
+    service = ResearchDashboardService(db)
+
+    dashboard = service.get_dashboard(
+        organization_id=organization_id,
+        project_id=project_id,
+        workspace_id=workspace_id,
+        limit=limit,
+        offset=offset,
+    )
+
+    if dashboard is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research workspace not found.",
+        )
+
+    return dashboard

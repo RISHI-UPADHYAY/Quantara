@@ -125,6 +125,7 @@ class AnalysisService:
         analysis_run = self.repository.create(
             organization_id=organization_id,
             project_id=project_id,
+            research_workspace_id=research_workspace_id,
             dataset_id=dataset_id,
             dataset_version_id=dataset_version_id,
             analysis_type=normalized_analysis_type,
