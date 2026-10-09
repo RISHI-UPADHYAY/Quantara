@@ -7,6 +7,12 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy import func
 
+from app.schemas.research_dashboard import (
+    ResearchAnalysisCoverage,
+    ResearchDashboardRunSummary,
+    ResearchLatestActivity,
+)
+
 from app.models.analysis_run import AnalysisRun
 from app.repositories.analysis_run_repository import AnalysisRunRepository
 from app.services.research.research_workspace_service import ResearchWorkspaceService
@@ -74,6 +80,60 @@ class ResearchDashboardService:
             offset=offset,
         )
 
+        all_runs = self.analysis_repository.list_all_by_workspace(
+            organization_id=organization_id,
+            project_id=project_id,
+            workspace_id=workspace_id,
+        )
+
+        coverage_by_type: dict[str, dict[str, Any]] = {}
+        latest_completed_by_type: dict[str, AnalysisRun] = {}
+
+        for run in all_runs:
+            analysis_type = run.analysis_type
+            run_status = str(run.status).lower()
+
+            if analysis_type not in coverage_by_type:
+                coverage_by_type[analysis_type] = {
+                    "analysis_type": analysis_type,
+                    "total_runs": 0,
+                    "completed_runs": 0,
+                    "failed_runs": 0,
+                    "running_runs": 0,
+                    "pending_runs": 0,
+                    "latest_status": run_status,
+                    "latest_run_at": run.created_at,
+                }
+
+            coverage = coverage_by_type[analysis_type]
+            coverage["total_runs"] += 1
+
+            status_key = f"{run_status}_runs"
+            if status_key in coverage:
+                coverage[status_key] += 1
+
+            if run.status == "completed":
+                latest_completed_by_type.setdefault(
+                    analysis_type,
+                    run,
+                )
+
+        analysis_coverage = [
+            ResearchAnalysisCoverage(**item)
+            for item in coverage_by_type.values()
+        ]
+
+        latest_completed_analyses = [
+            ResearchDashboardRunSummary.model_validate(run)
+            for run in latest_completed_by_type.values()
+        ]
+
+        latest_activity = (
+            ResearchLatestActivity.model_validate(all_runs[0])
+            if all_runs
+            else None
+        )
+
         return {
             "workspace_id": workspace.id,
             "workspace_name": workspace.name,
@@ -87,4 +147,7 @@ class ResearchDashboardService:
             "running_runs": counts.get("running", 0),
             "pending_runs": counts.get("pending", 0),
             "recent_runs": recent_runs,
+            "analysis_coverage": analysis_coverage,
+            "latest_completed_analyses": latest_completed_analyses,
+            "latest_activity": latest_activity,
         }

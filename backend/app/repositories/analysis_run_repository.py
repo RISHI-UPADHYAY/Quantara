@@ -184,6 +184,29 @@ class AnalysisRunRepository:
         )
 
 
+    def list_all_by_workspace(
+        self,
+        *,
+        organization_id: uuid.UUID,
+        project_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+    ) -> list[AnalysisRun]:
+
+        return (
+            self.db.query(AnalysisRun)
+            .filter(
+                AnalysisRun.organization_id == organization_id,
+                AnalysisRun.project_id == project_id,
+                AnalysisRun.research_workspace_id == workspace_id,
+            )
+            .order_by(
+                AnalysisRun.created_at.desc(),
+                AnalysisRun.id.desc(),
+            )
+            .all()
+        )
+
+
     def get_reproduction_source(
         self,
         *,
