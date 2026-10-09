@@ -125,16 +125,34 @@ class AnalysisRunRepository:
         self,
         *,
         dataset_id: uuid.UUID,
+        analysis_type: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
     ) -> list[AnalysisRun]:
 
+        query = self.db.query(AnalysisRun).filter(
+            AnalysisRun.dataset_id == dataset_id
+        )
+
+        if analysis_type is not None:
+            query = query.filter(
+                AnalysisRun.analysis_type == analysis_type
+            )
+
+        if status is not None:
+            query = query.filter(
+                AnalysisRun.status == status
+            )
+
         return (
-            self.db.query(AnalysisRun)
-            .filter(
-                AnalysisRun.dataset_id == dataset_id
-            )
+            query
             .order_by(
-                AnalysisRun.created_at.desc()
+                AnalysisRun.created_at.desc(),
+                AnalysisRun.id.desc(),
             )
+            .offset(offset)
+            .limit(limit)
             .all()
         )
 

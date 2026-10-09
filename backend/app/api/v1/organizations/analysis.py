@@ -3,7 +3,7 @@ from uuid import UUID
 
 import pandas as pd
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter,Query, Depends, HTTPException, status
 
 from sqlalchemy.orm import Session
 
@@ -1474,6 +1474,26 @@ def list_analysis_runs(
     organization_id: UUID,
     project_id: UUID,
     dataset_id: UUID,
+    analysis_type: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=100,
+    ),
+    run_status: str | None = Query(
+        default=None,
+        alias="status",
+        min_length=1,
+        max_length=30,
+    ),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=100,
+    ),
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
     membership: OrganizationMember = Depends(
         require_organization_role(
             ROLE_ADMIN,
@@ -1498,6 +1518,10 @@ def list_analysis_runs(
 
     return repository.list_by_dataset(
         dataset_id=dataset_id,
+        analysis_type=analysis_type,
+        status=run_status,
+        limit=limit,
+        offset=offset,
     )
 
 @router.get(
@@ -1542,10 +1566,14 @@ def get_analysis_run(
             detail="Analysis run not found",
         )
 
-    if analysis_run.dataset_id != dataset_id:
+    if (
+        analysis_run.organization_id != organization_id
+        or analysis_run.project_id != project_id
+        or analysis_run.dataset_id != dataset_id
+    ):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Analysis run not found",
+            detail="Analysis run not found.",
         )
 
     return analysis_run
