@@ -12,6 +12,7 @@ from app.dependencies.database import get_db
 from app.dependencies.organization import require_organization_role
 from app.repositories.analysis_run_repository import AnalysisRunRepository
 from app.repositories.dataset_version_repository import DatasetVersionRepository
+from app.repositories.research_workspace_repository import ResearchWorkspaceRespository
 from app.models.organization_member import OrganizationMember
 from app.repositories.dataset_repository import DatasetRepository
 from app.schemas.analysis import (
@@ -51,7 +52,7 @@ from app.services.analysis.portfolio.portfolio_stress_engine import PortfolioStr
 from app.services.analysis.portfolio.portfolio_validator import PortfolioValidationError
 from app.services.analysis.performance_comparison_service import PerformanceComparisonService
 from app.services.visualization.visualization_service import VisualizationService
-
+from app.services.execution.market_data_loader import ExecutionMarketDataLoader
 
 router = APIRouter()
 
@@ -1202,8 +1203,77 @@ def create_analysis_run(
         db,
     )
 
-    path = _resolve_file(data.file_path)
-    dataframe = _load_dataframe(path)
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset_version = (
+        dataset_version_repository.get_by_id_for_dataset(
+            dataset_version_id=data.dataset_version_id,
+            dataset_id=dataset_id,
+        )
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset version not found.",
+        )
+
+    if not dataset_version.storage_uri:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Dataset version has no storage URI.",
+        )
+
+    # Validate the optional research workspace against the organization
+    # organization and project that own this analysis run.
+    if data.research_workspace_id is not None:
+        workspace_repository = ResearchWorkspaceRespository(db)
+
+        workspace = workspace_repository.get_by_id(
+            workspace_id=data.research_workspace_id,
+            organization_id=organization_id,
+            project_id=project_id,
+        )
+
+        if workspace is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Research workspace not found.",
+            )
+
+        # If the workspace is dataset-scoped, it must refer to 
+        # the same dataset used by this analysis run.
+        if (
+            workspace.dataset_id is not None
+            and workspace.dataset_id != dataset_id
+        ):
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Research workspace does not belong to this dataset.",
+            )
+
+        # If the workspace pins a dataset version, it must refer to the exact version
+        # used by this analysis run.
+
+        if (
+            workspace.dataset_version_id is not None
+            and workspace.dataset_version_id != data.dataset_version_id
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Research workspace is configured for a different "
+                    "dataset version."
+                ),
+            )
+
+    # The dataset version is the authoritative source of market data
+    # The client-supplied file_path is retained for API compatibility,
+    # but the actual data is loader from DatasetVersion.storage_uri.
+    loader = ExecutionMarketDataLoader(ANALYSIS_ROOT)
+
+    dataframe = loader.load(dataset_version.storage_uri)
 
     repository = AnalysisRunRepository(db)
     service = AnalysisService(repository)
@@ -1217,6 +1287,8 @@ def create_analysis_run(
             dataset_version_id=data.dataset_version_id,
             analysis_type=data.analysis_type,
             created_by=membership.user_id,
+            research_workspace_id=data.research_workspace_id,
+            configuration=data.configuration,
             **data.parameters,
         )
 
@@ -1225,6 +1297,171 @@ def create_analysis_run(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         )
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/dataset/{dataset_id}/analysis/runs/{run_id}/reproduce",
+    response_model=AnalysisRunResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def reproduce_analysis_run(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    run_id: UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    """Reproduce a completed analysis run using its exact dataset version."""
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    repository = AnalysisRunRepository(db)
+
+    source_run = repository.get_by_id(
+        analysis_run_id=run_id,
+    )
+
+    if source_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found.",
+        )
+
+    if (
+        source_run.organization_id != organization_id
+        or source_run.project_id != project_id
+        or source_run.dataset_id != dataset_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found.",
+        )
+
+    if source_run.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only completed analysis runs can be reproduced.",
+        )
+
+    if source_run.dataset_version_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Analysis run has no dataset version.",
+        )
+
+    dataset_version_repository = DatasetVersionRepository(db)
+
+    dataset_version = (
+        dataset_version_repository.get_by_id_for_dataset(
+            dataset_version_id=source_run.dataset_version_id,
+            dataset_id=dataset_id,
+        )
+    )
+
+    if dataset_version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset version for analysis run not found.",
+        )
+
+    # Reproduction must use the exact dataset version referenced
+    # by the original analysis run.
+
+    loader = ExecutionMarketDataLoader(ANALYSIS_ROOT)
+    dataframe = loader.load(dataset_version.storage_uri)
+
+
+    service = AnalysisService(repository)
+
+    try:
+
+        return service.run(
+            dataframe=dataframe,
+            organization_id=organization_id,
+            project_id=project_id,
+            dataset_id=dataset_id,
+            dataset_version_id=source_run.dataset_version_id,
+            analysis_type=source_run.analysis_type,
+            created_by=membership.user_id,
+            research_workspace_id=source_run.research_workspace_id,
+            configuration=source_run.configuration,
+            reproduced_from_id=source_run.id,
+            **source_run.parameters,
+        )
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+@router.get(
+    "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs/{run_id}/reproductions",
+    response_model=list[AnalysisRunResponse],
+    status_code=status.HTTP_200_OK,
+)
+def list_analysis_run_reproduction(
+    organization_id: UUID,
+    project_id: UUID,
+    dataset_id: UUID,
+    run_id: UUID,
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+
+    """List direct reproduction created from an analysis run."""
+
+    _validate_dataset(
+        organization_id,
+        project_id,
+        dataset_id,
+        membership,
+        db,
+    )
+
+    repository = AnalysisRunRepository(db)
+
+    source_run = repository.get_by_id(
+        analysis_run_id=run_id,
+    )
+
+    if source_run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found.",
+        )
+
+    if (
+        source_run.organization_id != organization_id
+        or source_run.project_id != project_id
+        or source_run.dataset_id != dataset_id
+    ):
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analysis run not found.",
+        )
+
+    return repository.list_reproduction(
+        analysis_run_id=run_id,
+    )
 
 @router.get(
     "/{organization_id}/projects/{project_id}/datasets/{dataset_id}/analysis/runs",

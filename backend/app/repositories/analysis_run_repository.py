@@ -23,7 +23,7 @@ class AnalysisRunRepository:
         dataset_version_id: uuid.UUID,
         analysis_type: str,
         created_by: uuid.UUID,
-        research_workspace_id: uuid.UUID | None,
+        research_workspace_id: uuid.UUID | None = None,
         parameters: dict | None = None,
         configuration: dict | None = None,
         provenance: dict | None = None,
