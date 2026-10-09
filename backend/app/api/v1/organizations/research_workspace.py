@@ -15,11 +15,16 @@ from app.schemas.research_workspace import (
     ResearchWorkspaceResponse,
     ResearchWorkspaceUpdateRequest,
 )
+from app.schemas.research_comparison import (
+    ResearchRunComparisonRequest,
+    ResearchRunComparisonResponse,
+)
 from app.schemas.research_dashboard import ResearchDashboardSummary
 from app.services.research.research_workspace_service import (
     ResearchWorkspaceService,
 )
 from app.services.research.research_dashboard_service import ResearchDashboardService
+from app.services.research.research_run_comparison_service import ResearchRunComparisonService
 
 
 router = APIRouter()
@@ -287,3 +292,56 @@ def get_research_workspace_dashboard(
         )
 
     return dashboard
+
+
+@router.post(
+    "/{organization_id}/projects/{project_id}/research-workspaces/"
+    "{workspace_id}/compare-runs",
+    response_model=ResearchRunComparisonResponse,
+    status_code=status.HTTP_200_OK,
+)
+def compare_research_runs(
+    organization_id: uuid.UUID,
+    project_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    payload: ResearchRunComparisonRequest,
+    db: Session = Depends(get_db),
+    membership: OrganizationMember = Depends(
+        require_organization_role(
+            ROLE_ADMIN,
+            ROLE_ANALYST,
+        )
+    ),
+):
+    """Compare two completed analysis runs in a research workspace."""
+
+    service = ResearchRunComparisonService(db)
+
+    try:
+        comparison = service.compare_runs(
+            organization_id=organization_id,
+            project_id=project_id,
+            workspace_id=workspace_id,
+            baseline_run_id=payload.baseline_run_id,
+            comparison_run_id=payload.comparison_run_id,
+        )
+
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+    if comparison is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research workspace not found.",
+        )
+
+    return comparison
