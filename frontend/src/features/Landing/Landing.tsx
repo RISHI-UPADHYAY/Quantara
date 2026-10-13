@@ -1,539 +1,367 @@
+
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  ArrowRight,
+  BarChart3,
+  Check,
+  ChevronDown,
+  CircleHelp,
+  FileCheck2,
+  LineChart,
+  Menu,
+  Moon,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  X,
+  Zap,
+} from "lucide-react";
 import "./Landing.css";
-import useScrollReveal from "./useScrollReveal";
 
-const capabilities = [
-  {
-    number: "01",
-    title: "Structured research",
-    description:
-      "Bring projects, datasets, and research runs into a consistent workspace designed for quantitative workflows.",
-    tags: ["Projects", "Datasets", "Workspaces"],
-  },
-  {
-    number: "02",
-    title: "Deeper analysis",
-    description:
-      "Inspect financial metrics and analytical results in a workflow that makes research easier to navigate and understand.",
-    tags: ["Returns", "Volatility", "Risk"],
-  },
-  {
-    number: "03",
-    title: "Comparable experiments",
-    description:
-      "Compare completed research runs, identify shared metrics, and understand where results differ.",
-    tags: ["Run history", "Metrics", "Comparison"],
-  },
-];
+const navItems = ["Platform", "Solutions", "Resources", "Company"];
 
-const workflow = [
-  {
-    number: "01",
-    title: "Organize your inputs",
-    description:
-      "Structure your research around projects, datasets, and versioned data.",
-  },
-  {
-    number: "02",
-    title: "Run your analysis",
-    description:
-      "Execute supported analyses and keep their results associated with your research workspace.",
-  },
-  {
-    number: "03",
-    title: "Review and compare",
-    description:
-      "Return to saved research and compare completed runs to investigate differences.",
-  },
-];
-
-function ArrowIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      className="q-arrow-icon"
-    >
-      <path
-        d="M4.167 10h11.666M10 4.167 15.833 10 10 15.833"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function BrandMark() {
-  return (
-    <span className="q-brand-mark" aria-hidden="true">
-      <span />
-      <span />
-      <span />
-      <span />
-    </span>
-  );
-}
-
-function ResearchPreview() {
-  const bars = [35, 48, 42, 58, 49, 66, 57, 73, 62, 81, 70, 91, 78, 100];
-
-  return (
-    <div
-      className="q-preview-shell"
-      aria-label="Illustrative Quantara research workspace"
-    >
-      <div className="q-preview-glow" />
-
-      <div className="q-preview-window">
-        <div className="q-window-bar">
-          <div className="q-window-brand">
-            <BrandMark />
-            <span>QUANTARA</span>
-          </div>
-
-          <div className="q-window-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-
-        <div className="q-preview-body">
-          <aside className="q-preview-sidebar">
-            <span className="q-sidebar-label">WORKSPACE</span>
-
-            <div className="q-sidebar-item q-sidebar-active">
-              <span className="q-sidebar-icon">◫</span>
-              Overview
-            </div>
-
-            <div className="q-sidebar-item">
-              <span className="q-sidebar-icon">⌘</span>
-              Research
-            </div>
-
-            <div className="q-sidebar-item">
-              <span className="q-sidebar-icon">▤</span>
-              Datasets
-            </div>
-
-            <div className="q-sidebar-item">
-              <span className="q-sidebar-icon">⇄</span>
-              Comparisons
-            </div>
-
-            <div className="q-sidebar-bottom">
-              <span className="q-sidebar-label">YOUR WORKSPACE</span>
-              <div className="q-workspace-avatar">R</div>
-              <span>Research team</span>
-            </div>
-          </aside>
-
-          <div className="q-preview-main">
-            <div className="q-preview-heading">
-              <div>
-                <span className="q-preview-overline">
-                  RESEARCH WORKSPACE
-                </span>
-                <h3>Research overview</h3>
-                <p>Your research, organized.</p>
-              </div>
-
-              <span className="q-preview-status">
-                <span />
-                Workspace
-              </span>
-            </div>
-
-            <div className="q-metric-grid">
-              <div className="q-metric-card">
-                <span>Analysis runs</span>
-                <strong>24</strong>
-                <small>Across your workspace</small>
-              </div>
-
-              <div className="q-metric-card">
-                <span>Completed</span>
-                <strong>18</strong>
-                <small>Research records</small>
-              </div>
-
-              <div className="q-metric-card">
-                <span>Comparisons</span>
-                <strong>06</strong>
-                <small>Run-to-run reviews</small>
-              </div>
-            </div>
-
-            <div className="q-chart-card">
-              <div className="q-chart-heading">
-                <div>
-                  <span>RESEARCH ACTIVITY</span>
-                  <strong>Analysis landscape</strong>
-                </div>
-
-                <span className="q-chart-period">Illustrative</span>
-              </div>
-
-              <div className="q-chart">
-                <div className="q-chart-grid">
-                  <span />
-                  <span />
-                  <span />
-                  <span />
-                </div>
-
-                <div className="q-chart-bars" aria-hidden="true">
-                  {bars.map((height, index) => (
-                    <span
-                      key={index}
-                      style={{ height: `${height}%` }}
-                      className={
-                        index === bars.length - 1 ? "q-bar-highlight" : ""
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="q-chart-axis">
-                <span>Research activity</span>
-                <span>Workspace preview</span>
-              </div>
-            </div>
-
-            <div className="q-preview-bottom">
-              <div>
-                <span className="q-mini-indicator" />
-                Research history
-              </div>
-
-              <span>Organized by workspace</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="q-float-note q-float-note-top">
-        <span className="q-float-icon">↗</span>
-        <div>
-          <strong>Research, connected.</strong>
-          <span>One structured workspace</span>
-        </div>
-      </div>
-
-      <div className="q-float-note q-float-note-bottom">
-        <span className="q-float-check">✓</span>
-        <div>
-          <strong>Compare research runs</strong>
-          <span>Review metric differences</span>
-        </div>
-      </div>
-    </div>
-  );
-}
+type Theme = "light" | "dark";
 
 export default function Landing() {
-  useScrollReveal();
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      return localStorage.getItem("quantara-theme") === "dark"
+        ? "dark"
+        : "light";
+    } catch {
+      return "light";
+    }
+  });
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+
+    try {
+      localStorage.setItem("quantara-theme", theme);
+    } catch {
+      // The page still works when browser storage is unavailable.
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((current) => (current === "light" ? "dark" : "light"));
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
-    <main className="q-landing">
-      <header className="q-header">
-        <div className="q-container q-nav">
-          <a href="#home" className="q-logo" aria-label="Quantara home">
-            <BrandMark />
-            <span>QUANTARA</span>
+    <main className="landing-page">
+      <header className="landing-header">
+        <Link
+          className="landing-brand"
+          to="/"
+          aria-label="Quantara home"
+          onClick={closeMobileMenu}
+        >
+          <span className="brand-mark">Q</span>
+          <span>
+            <strong>quantara</strong>
+            <small>INSTITUTIONAL INTELLIGENCE</small>
+          </span>
+        </Link>
+
+        <nav
+          className={`landing-nav ${mobileMenuOpen ? "is-open" : ""}`}
+          aria-label="Main navigation"
+        >
+          {navItems.map((item) => (
+            <a
+              href={`#${item.toLowerCase()}`}
+              key={item}
+              onClick={closeMobileMenu}
+            >
+              {item}
+              {item !== "Company" && <ChevronDown aria-hidden="true" />}
+            </a>
+          ))}
+        </nav>
+
+        <div className="landing-actions">
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+            title={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
+          >
+            {theme === "light" ? (
+              <Moon size={17} aria-hidden="true" />
+            ) : (
+              <Sun size={17} aria-hidden="true" />
+            )}
+          </button>
+
+          <Link className="sign-in" to="/login">
+            Sign in
+          </Link>
+
+          <a className="landing-button" href="#demo">
+            Request a demo <ArrowRight aria-hidden="true" />
           </a>
 
-          <nav className="q-nav-links" aria-label="Main navigation">
-            <a href="#platform">Platform</a>
-            <a href="#capabilities">Solutions</a>
-            <a href="#workflow">Resources</a>
-          </nav>
-
-          <div className="q-nav-actions">
-            <a className="q-nav-signin" href="#trust">
-              Security
-            </a>
-
-            <a
-              className="q-button q-button-primary q-nav-cta"
-              href="#pilot"
-            >
-              Request a demo <ArrowIcon />
-            </a>
-          </div>
+          <button
+            type="button"
+            className="mobile-menu"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? (
+              <X aria-hidden="true" />
+            ) : (
+              <Menu aria-hidden="true" />
+            )}
+          </button>
         </div>
       </header>
 
-      <section className="q-hero" id="home">
-        <div className="q-hero-orb q-hero-orb-one" />
-        <div className="q-hero-orb q-hero-orb-two" />
-
-        <div className="q-container q-hero-layout">
-          <div className="q-hero-copy">
-            <div className="q-hero-badge">
-              <span className="q-badge-dot" />
-              FINANCIAL INTELLIGENCE, UNIFIED
-            </div>
-
-            <h1>
-              Your research.
-              <br />
-              <span>One intelligent</span>
-              <br />
-              workspace.
-            </h1>
-
-            <p className="q-hero-description">
-              A structured research workspace for quantitative finance teams.
-              Organize datasets, run financial analyses, and compare results
-              without losing sight of the work behind them.
-            </p>
-
-            <div className="q-hero-actions">
-              <a
-                className="q-button q-button-primary q-button-large"
-                href="#pilot"
-              >
-                Discuss a pilot <ArrowIcon />
-              </a>
-
-              <a className="q-hero-secondary" href="#platform">
-                Explore the platform <span>↓</span>
-              </a>
-            </div>
-
-            <div className="q-hero-proof">
-              <div className="q-proof-symbol">◎</div>
-              <p>
-                <strong>Built for quantitative workflows</strong>
-                <span>Research · Analytics · Reproducibility</span>
-              </p>
-            </div>
+      <section className="hero-section">
+        <div className="hero-copy">
+          <div className="eyebrow">
+            <span className="live-dot" />
+            EXECUTION INTELLIGENCE FOR INSTITUTIONS
           </div>
 
-          <div className="q-hero-visual" id="platform">
-            <ResearchPreview />
-          </div>
-        </div>
+          <h1>
+            Turn every order into a <em>decision advantage.</em>
+          </h1>
 
-        <div className="q-container q-hero-bottom">
-          <span>BUILT FOR THE WORK BEHIND FINANCIAL DECISIONS</span>
+          <p>
+            Quantara gives institutional trading teams the clarity to measure
+            execution quality, investigate exceptions, and improve outcomes
+            with confidence.
+          </p>
 
-          <div>
-            <span>Quantitative research</span>
-            <i />
-            <span>Financial analytics</span>
-            <i />
-            <span>Research comparison</span>
-          </div>
-        </div>
-      </section>
+          <div className="hero-actions">
+            <a className="landing-button large" href="#demo">
+              Request a demo <ArrowRight aria-hidden="true" />
+            </a>
 
-      <section className="q-capabilities q-section" id="capabilities">
-        <div className="q-container">
-          <div className="q-section-heading" data-reveal>
-            <div>
-              <span className="q-eyebrow">A MORE CONNECTED WORKFLOW</span>
-              <h2>
-                Less time navigating.
-                <br />
-                More time understanding.
-              </h2>
-            </div>
-
-            <p>
-              Financial research is more than a result. It is the data,
-              assumptions, analysis, and comparisons behind that result.
-              Quantara brings these pieces into a more structured workflow.
-            </p>
-          </div>
-
-          <div className="q-capability-grid">
-            {capabilities.map((item, index) => (
-              <article
-                className="q-capability-card"
-                key={item.number}
-                data-reveal
-                data-reveal-delay={String(index + 1)}
-              >
-                <div className="q-capability-top">
-                  <span className="q-capability-number">{item.number}</span>
-                  <span className="q-capability-arrow">
-                    <ArrowIcon />
-                  </span>
-                </div>
-
-                <h3>{item.title}</h3>
-                <p>{item.description}</p>
-
-                <div className="q-tags">
-                  {item.tags.map((tag) => (
-                    <span key={tag}>{tag}</span>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="q-workflow q-section" id="workflow">
-        <div className="q-container q-workflow-layout">
-          <div className="q-workflow-intro" data-reveal>
-            <span className="q-eyebrow">FROM INPUTS TO INSIGHT</span>
-            <h2>
-              A clearer path
-              <br />
-              through research.
-            </h2>
-
-            <p>
-              Keep your research workflow organized from the dataset you start
-              with to the results you review and compare.
-            </p>
-
-            <a className="q-text-link" href="#pilot">
-              Explore a pilot <ArrowIcon />
+            <a className="hero-link" href="#platform">
+              Explore the platform <ArrowRight aria-hidden="true" />
             </a>
           </div>
 
-          <div className="q-workflow-list">
-            {workflow.map((step, index) => (
-              <article
-                className="q-workflow-step"
-                key={step.number}
-                data-reveal
-                data-reveal-delay={String(index + 1)}
-              >
-                <div className="q-step-number">{step.number}</div>
+          <div className="hero-proof">
+            <span>
+              <Check aria-hidden="true" /> Built for institutional workflows
+            </span>
+            <span>
+              <Check aria-hidden="true" /> Audit-ready by design
+            </span>
+          </div>
+        </div>
 
+        <div
+          className="hero-visual"
+          aria-label="Quantara workspace preview"
+        >
+          <div className="visual-top">
+            <span className="mini-brand">
+              <span className="brand-mark">Q</span> quantara
+            </span>
+
+            <span className="visual-status">
+              <span className="green-dot status-dot" /> Live workspace
+            </span>
+          </div>
+
+          <div className="visual-body">
+            <div className="visual-sidebar">
+              <span className="visual-active">
+                <BarChart3 aria-hidden="true" /> Overview
+              </span>
+              <span>
+                <LineChart aria-hidden="true" /> Analysis
+              </span>
+              <span>
+                <FileCheck2 aria-hidden="true" /> Review queue
+              </span>
+              <span>
+                <ShieldCheck aria-hidden="true" /> Data quality
+              </span>
+            </div>
+
+            <div className="visual-main">
+              <div className="visual-breadcrumb">
+                NORTHSTAR CAPITAL / EXECUTION PILOT
+              </div>
+
+              <div className="visual-title">
                 <div>
-                  <h3>{step.title}</h3>
-                  <p>{step.description}</p>
+                  <span>Workspace Overview</span>
+                  <small>Execution intelligence at a glance.</small>
                 </div>
+                <span className="visual-pill">Last 30 days</span>
+              </div>
 
-                <span className="q-step-mark">↗</span>
-              </article>
-            ))}
+              <div className="visual-metrics">
+                <div>
+                  <small>Total orders</small>
+                  <strong>8,426</strong>
+                  <span className="metric-up">+12.4%</span>
+                </div>
+                <div>
+                  <small>Analysis complete</small>
+                  <strong>6,274</strong>
+                  <span className="metric-up">74.4%</span>
+                </div>
+                <div>
+                  <small>Requires review</small>
+                  <strong>12</strong>
+                  <span className="metric-warn">3 critical</span>
+                </div>
+              </div>
+
+              <div className="visual-chart" aria-label="Illustrative activity chart">
+                <div className="chart-line" />
+                <div className="chart-bars" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="q-trust q-section" id="trust">
-        <div className="q-container q-trust-panel">
-          <div className="q-trust-copy" data-reveal>
-            <span className="q-eyebrow">BUILT AROUND RESEARCH CONTEXT</span>
-            <h2>
-              Results matter.
-              <br />
-              So does how you got there.
-            </h2>
+      {/* Trust strip intentionally removed: Quantara is in its pilot stage. */}
 
+      <section className="landing-section" id="platform">
+        <div className="section-intro">
+          <div className="eyebrow">A CLEARER VIEW OF EXECUTION</div>
+          <h2>One workspace for the decisions behind performance.</h2>
+          <p>
+            Bring order data, benchmarks, review workflows, and research into
+            one operational layer your whole team can trust.
+          </p>
+        </div>
+
+        <div className="feature-grid">
+          <article>
+            <span className="feature-icon blue">
+              <BarChart3 aria-hidden="true" />
+            </span>
+            <h3>Measure what matters</h3>
             <p>
-              Research should remain understandable after the analysis finishes.
-              Quantara connects runs to structured workspaces and supports
-              reviewing completed runs side by side.
+              See execution quality across orders, desks, brokers, and
+              strategies with consistent, defensible metrics.
             </p>
-          </div>
-
-          <div className="q-trust-points">
-            <div className="q-trust-point" data-reveal data-reveal-delay="1">
-              <span className="q-trust-icon">01</span>
-              <div>
-                <h3>Organized research history</h3>
-                <p>Keep research runs associated with their workspace.</p>
-              </div>
-            </div>
-
-            <div className="q-trust-point" data-reveal data-reveal-delay="2">
-              <span className="q-trust-icon">02</span>
-              <div>
-                <h3>Dataset context</h3>
-                <p>Work within projects and versioned datasets.</p>
-              </div>
-            </div>
-
-            <div className="q-trust-point" data-reveal data-reveal-delay="3">
-              <span className="q-trust-icon">03</span>
-              <div>
-                <h3>Run comparison</h3>
-                <p>
-                  Inspect shared metrics and differences between completed
-                  runs.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="q-pilot-section" id="pilot">
-        <div className="q-container">
-          <div className="q-pilot-panel">
-            <div className="q-pilot-glow" />
-
-            <div className="q-pilot-content" data-reveal>
-              <span className="q-eyebrow">START WITH A REAL WORKFLOW</span>
-              <h2>
-                Let’s solve a research
-                <br />
-                problem that matters.
-              </h2>
-
-              <p>
-                We’re shaping Quantara around real quantitative finance
-                workflows. Discuss a focused pilot built around your team’s
-                research process and operational needs.
-              </p>
-
-              <a
-                className="q-button q-button-light q-button-large"
-                href="#contact"
-              >
-                Discuss your use case <ArrowIcon />
-              </a>
-            </div>
-
-            <div className="q-pilot-decoration" aria-hidden="true">
-              <BrandMark />
-              <span>Q</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <footer className="q-footer" id="contact">
-        <div className="q-container">
-          <div className="q-footer-main" data-reveal>
-            <div className="q-footer-brand">
-              <a href="#home" className="q-logo">
-                <BrandMark />
-                <span>QUANTARA</span>
-              </a>
-              <p>Financial intelligence. Unified.</p>
-            </div>
-
-            <div className="q-footer-note">
-              <span>BUILT FOR QUANTITATIVE FINANCE</span>
-              <p>
-                A research workspace designed to bring structure to financial
-                analysis and the work behind it.
-              </p>
-            </div>
-
-            <a className="q-footer-back" href="#home">
-              Back to top ↑
+            <a href="#demo">
+              Explore analytics <ArrowRight aria-hidden="true" />
             </a>
-          </div>
+          </article>
 
-          <div className="q-footer-bottom">
-            <span>© {new Date().getFullYear()} Quantara</span>
-            <span>Research with context. Decisions with clarity.</span>
+          <article>
+            <span className="feature-icon green">
+              <ShieldCheck aria-hidden="true" />
+            </span>
+            <h3>Trust every insight</h3>
+            <p>
+              Track dataset quality, benchmark coverage, and analysis lineage
+              before a result reaches a decision-maker.
+            </p>
+            <a href="#demo">
+              Explore data quality <ArrowRight aria-hidden="true" />
+            </a>
+          </article>
+
+          <article>
+            <span className="feature-icon amber">
+              <Sparkles aria-hidden="true" />
+            </span>
+            <h3>Act on exceptions</h3>
+            <p>
+              Move from signal to evidence with prioritized reviews, clear
+              ownership, and audit-ready decisions.
+            </p>
+            <a href="#demo">
+              Explore review workflows <ArrowRight aria-hidden="true" />
+            </a>
+          </article>
+        </div>
+      </section>
+
+      <section className="impact-section">
+        <div className="impact-copy">
+          <div className="eyebrow">BUILT FOR THE WAY TEAMS WORK</div>
+          <h2>Precision without the operational drag.</h2>
+          <p>
+            Quantara turns fragmented execution data into a shared language
+            for traders, quants, operations, and leadership.
+          </p>
+          <a className="landing-button" href="#demo">
+            See Quantara in action <ArrowRight aria-hidden="true" />
+          </a>
+        </div>
+
+        <div className="impact-list">
+          <div>
+            <strong>87.1%</strong>
+            <span>eligible orders analyzed</span>
           </div>
+          <div>
+            <strong>4.8 bps</strong>
+            <span>median implementation shortfall</span>
+          </div>
+          <div>
+            <strong>12</strong>
+            <span>open reviews with clear owners</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="cta-section" id="demo">
+        <span className="feature-icon blue">
+          <Zap aria-hidden="true" />
+        </span>
+
+        <div>
+          <div className="eyebrow">START WITH A BETTER SIGNAL</div>
+          <h2>Make execution intelligence part of every decision.</h2>
+          <p>See how Quantara can fit your team&apos;s workflow.</p>
+        </div>
+
+        <a className="landing-button large" href="mailto:hello@quantara.example">
+          Talk to our team <ArrowRight aria-hidden="true" />
+        </a>
+      </section>
+
+      <footer className="landing-footer">
+        <Link className="landing-brand" to="/" aria-label="Quantara home">
+          <span className="brand-mark">Q</span>
+          <span>
+            <strong>quantara</strong>
+            <small>INSTITUTIONAL INTELLIGENCE</small>
+          </span>
+        </Link>
+
+        <span>
+          © 2026 Quantara. Execution intelligence for institutions.
+        </span>
+
+        <div>
+          <a href="#platform">Platform</a>
+          <a href="#demo">Contact</a>
+          <a href="#help">
+            <CircleHelp aria-hidden="true" /> Help
+          </a>
         </div>
       </footer>
     </main>
