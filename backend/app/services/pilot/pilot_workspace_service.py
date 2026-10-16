@@ -110,6 +110,7 @@ class PilotWorkspaceService:
         )
 
         analytics = None
+        market_data = None
 
         if market_data_context["storage_uri"] is not None:
             market_data = self.market_data_loader.load(

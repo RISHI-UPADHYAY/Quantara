@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -35,6 +34,23 @@ import {
   Zap,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  getOrganizations,
+  getProjects,
+  type Organization,
+  type Project,
+} from "../../services/workspaceService";
+import {
+  getPilotWorkspaceOverview,
+  type PilotWorkspaceOverview,
+} from "../../services/workspaceService";
+import {
+  listReviewIssues,
+  type ReviewIssue,
+  type ReviewStatus,
+} from "../../services/reviewQueueService";
+import { getApiErrorMessage } from "../../services/api";
+import ReviewInvestigationPanel from "./ReviewInvestigationPanel";
 import "./Dashboard.css";
 
 const navGroups = [
@@ -44,7 +60,7 @@ const navGroups = [
       { icon: LayoutDashboard, label: "Overview", active: true },
       { icon: BarChart3, label: "Orders & Fills" },
       { icon: LineChart, label: "Execution Analysis" },
-      { icon: FileCheck2, label: "Review Queue", count: "12" },
+      { icon: FileCheck2, label: "Review Queue" },
       { icon: Activity, label: "Analysis Runs" },
     ],
   },
@@ -149,54 +165,33 @@ function ThemeToggle() {
 
 function ExecutionTrendChart() {
   return (
-    <div className="trend-chart">
-      <div className="chart-y-axis">
-        <span>0</span>
-        <span>-3</span>
-        <span>-6</span>
-        <span>-9</span>
-      </div>
-
-      <div className="chart-area">
-        <div className="grid-line one" />
-        <div className="grid-line two" />
-        <div className="grid-line three" />
-
-        <svg
-          viewBox="0 0 430 120"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label="Illustrative execution quality trend over November"
-        >
-          <defs>
-            <linearGradient id="execution-area" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0" stopColor="#2563eb" stopOpacity=".16" />
-              <stop offset="1" stopColor="#2563eb" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M0 94 C25 88 32 78 56 84 S89 63 111 71 S142 53 166 62 S191 38 217 48 S244 35 272 44 S297 20 326 31 S350 13 378 24 S403 10 430 15 L430 120 L0 120Z"
-            fill="url(#execution-area)"
-          />
-          <path
-            d="M0 94 C25 88 32 78 56 84 S89 63 111 71 S142 53 166 62 S191 38 217 48 S244 35 272 44 S297 20 326 31 S350 13 378 24 S403 10 430 15"
-            fill="none"
-            stroke="#2563eb"
-            strokeWidth="2.5"
-          />
-        </svg>
-
-        <div className="chart-x-axis">
-          <span>Nov 01</span>
-          <span>Nov 08</span>
-          <span>Nov 15</span>
-          <span>Nov 22</span>
-          <span>Nov 30</span>
-        </div>
-      </div>
+    <div
+      className="trend-chart"
+      role="status"
+      aria-label="Historical execution trend unavailable"
+    >
+      <p>Historical trend data is not available from this overview.</p>
     </div>
   );
+}
+
+function formatCount(value: number | null | undefined): string {
+  return new Intl.NumberFormat("en-US").format(value ?? 0);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  return value == null ? "-" : `${value.toFixed(1)}%`;
+}
+
+function formatReviewDate(value: string): string {
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? "-"
+    : date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
 }
 
 export default function Dashboard() {
@@ -206,6 +201,225 @@ export default function Dashboard() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [workspaceError, setWorkspaceError] = useState("");
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
+  const [overview, setOverview] = useState<PilotWorkspaceOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState("");
+  const [reviewActionMessage, setReviewActionMessage] = useState("");
+  const [reviewIssues, setReviewIssues] = useState<ReviewIssue[]>([]);
+  const [reviewQueueLoading, setReviewQueueLoading] = useState(false);
+  const [reviewQueueError, setReviewQueueError] = useState<string | null>(null);
+  const [reviewQueueReload, setReviewQueueReload] = useState(0);
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatus | "ALL">("ALL");
+  const [selectedReviewIssue, setSelectedReviewIssue] = useState<ReviewIssue | null>(null);
+
+  const selectedOrganization = organizations.find(
+    (organization) => organization.id === selectedOrganizationId,
+  );
+
+  const selectedProject = projects.find(
+    (project) => project.id === selectedProjectId,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOrganizations() {
+      setWorkspaceLoading(true);
+      setWorkspaceError("");
+
+      try {
+        const result = await getOrganizations();
+
+        if (cancelled)
+          return;
+
+        setOrganizations(result);
+        setSelectedOrganizationId(result[0]?.id ?? "");
+      } catch (erorr) {
+        if (!cancelled) {
+          setWorkspaceError(
+            getApiErrorMessage(erorr, "Unable to load organizations."),
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setWorkspaceLoading(false);
+        }
+      }
+    }
+
+    void loadOrganizations();
+
+    return () => {
+      cancelled = true
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjects() {
+      setProjects([]);
+      setSelectedProjectId("");
+      setWorkspaceError("");
+
+      if (!selectedOrganizationId)
+        return;
+
+      try {
+        const result = await getProjects(selectedOrganizationId);
+
+        if (cancelled)
+          return;
+
+        setProjects(result);
+        setSelectedProjectId(result[0]?.id ?? "");
+
+        if (result.length === 0) {
+          setWorkspaceError(
+            "This organization has no projects yet.",
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setWorkspaceError(
+            getApiErrorMessage(error, "Unable to load projects."),
+          );
+        }
+      }
+    }
+
+    void loadProjects();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOrganizationId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOverview() {
+      if (!selectedOrganizationId || !selectedProjectId) {
+        setOverview(null);
+        setOverviewLoading(false);
+        return;
+      }
+
+      setOverviewLoading(true);
+      setOverviewError("");
+      setOverview(null);
+
+      try {
+        const days =
+          range === "Last 7 days"
+            ? 7
+            : range === "Last 90 days"
+              ? 90
+              : 30;
+
+        const end = new Date();
+        const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
+
+        const result = await getPilotWorkspaceOverview(
+          selectedOrganizationId,
+          selectedProjectId,
+          {
+            startTime: start.toISOString(),
+            endTime: end.toISOString(),
+          },
+        );
+
+        if (!cancelled) {
+          setOverview(result);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOverviewError(
+            getApiErrorMessage(error, "Unable to load workspace overview."),
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setOverviewLoading(false);
+        }
+      }
+    }
+
+    void loadOverview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOrganizationId, selectedProjectId, range]);
+
+  useEffect(() => {
+    if (!selectedOrganizationId || !selectedProjectId) {
+      setSelectedReviewIssue(null);
+      setReviewIssues([]);
+      setReviewQueueError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadReviewQueue () {
+      setReviewQueueLoading(true);
+      setReviewQueueError(null);
+
+      try {
+        const response = await listReviewIssues (
+          selectedOrganizationId,
+          selectedProjectId,
+          {
+            limit: 100,
+            offset: 0,
+            ...(reviewStatusFilter !== "ALL"
+              ? { status: reviewStatusFilter }
+              : {}
+            ),
+          },
+        );
+
+        if (!cancelled) {
+          setReviewIssues(response.items);
+        } 
+      } catch {
+        if (!cancelled) {
+          setReviewQueueError(
+            "Unable to load review issues. Check your connection and permissions, then retry.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setReviewQueueLoading(false);
+        }
+      }
+    }
+
+    void loadReviewQueue();
+
+    return () => {
+      cancelled = true;
+    }
+  }, [
+    selectedOrganizationId,
+    selectedProjectId,
+    reviewStatusFilter,
+    reviewQueueReload,
+  ]);
+
+  useEffect(() => {
+    setSelectedReviewIssue(null);
+  }, [selectedOrganizationId, selectedProjectId]);
+
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -248,17 +462,100 @@ export default function Dashboard() {
           </button>
         </div>
 
-        <button className="workspace-switcher" type="button">
+        <button
+          className="workspace-switcher"
+          type="button"
+          onClick={() => setShowWorkspacePicker((value) => !value)}
+          aria-expanded={showWorkspacePicker}
+          aria-label="Select organization and project"
+        >
           <span className="workspace-dot">N</span>
           {!collapsed && (
             <span className="workspace-copy">
-              <span className="workspace-name">Northstar Capital</span>
+              <span className="workspace-name">
+                {
+                  workspaceLoading
+                    ? "Loading organizations..."
+                    : selectedOrganization?.name ?? "Select organization"
+                }
+              </span>
               <span className="workspace-project">
-                Execution Pilot <ChevronDown aria-hidden="true" />
+                {
+                  selectedProject?.name ?? "Select project"
+                }
+                <ChevronDown aria-hidden="true" />
               </span>
             </span>
           )}
         </button>
+
+        {showWorkspacePicker && !collapsed && (
+          <div
+            className="profile-popover"
+            style={{
+              left: 12,
+              right: 12,
+              top: 82,
+              bottom: "auto",
+              width: "auto",
+            }}
+          >
+            <strong>Select workspace</strong>
+
+            <label>
+              <span>Organization</span>
+              <select
+                value={selectedOrganizationId}
+                onChange={(event) =>
+                  setSelectedOrganizationId(event.target.value)
+                }
+                disabled={workspaceLoading || organizations.length === 0}
+                style={{ width: "100%", padding: 8 }}
+              >
+                {organizations.length === 0 && (
+                  <option value="">No organizations available</option>
+                )}
+
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Project</span>
+              <select
+                value={selectedProjectId}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
+                disabled={projects.length === 0}
+                style={{ width: "100%", padding: 8 }}
+              >
+                {projects.length === 0 && (
+                  <option value="">No projects available</option>
+                )}
+
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {workspaceError && (
+              <span role="alert">{workspaceError}</span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowWorkspacePicker(false)}
+            >
+              Done
+            </button>
+          </div>
+        )}
 
         <nav className="nav-scroll" aria-label="Workspace navigation">
           {navGroups.map((group) => (
@@ -267,35 +564,43 @@ export default function Dashboard() {
                 <div className="nav-group-label">{group.label}</div>
               )}
 
-              {group.items.map(({ icon: Icon, label, active, count }) => (
-                <button
-                  className={`nav-item ${active ? "nav-item-active" : ""}`}
-                  key={label}
-                  type="button"
-                  title={collapsed ? label : undefined}
-                  onClick={() => {
-                    if (label === "Review Queue") {
-                      document
-                        .getElementById("review-priorities")
-                        ?.scrollIntoView({ behavior: "smooth" });
-                    } else if (label === "Data Quality") {
-                      document
-                        .getElementById("data-health")
-                        ?.scrollIntoView({ behavior: "smooth" });
-                    } else if (label === "Overview") {
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }
-                  }}
-                >
-                  <Icon aria-hidden="true" />
-                  {!collapsed && (
-                    <>
-                      <span>{label}</span>
-                      {count && <span className="nav-count">{count}</span>}
-                    </>
-                  )}
-                </button>
-              ))}
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const label = item.label;
+                const active = "active" in item ? item.active : false;
+                const count = "count" in item && item.count === "string" ? item.count : undefined;
+
+                return (
+                  <button
+                    className={`nav-item ${active ? "nav-item-active" : ""}`}
+                    key={label}
+                    type="button"
+                    title={collapsed ? label : undefined}
+                    onClick={() => {
+                      if (label === "Review Queue") {
+                        document
+                          .getElementById("review-priorities")
+                          ?.scrollIntoView({ behavior: "smooth" });
+                      } else if (label === "Data Quality") {
+                        document
+                          .getElementById("data-health")
+                          ?.scrollIntoView({ behavior: "smooth" });
+                      } else if (label === "Overview") {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }
+                    }}
+                  >
+                    <Icon aria-hidden="true" />
+                    {!collapsed && (
+                      <>
+                        <span>{label}</span>
+                        {count !== undefined && (<span className="nav-count">{count}</span>)}
+                      </>
+                    )}
+                  </button>
+                )
+              })}
+
             </div>
           ))}
         </nav>
@@ -336,9 +641,9 @@ export default function Dashboard() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumbs">
-            <span>Northstar Capital</span>
+            <span>{selectedOrganization?.name ?? "Workspace"}</span>
             <span className="crumb-separator">/</span>
-            <span>Execution Pilot</span>
+            <span>{selectedProject?.name ?? "No project selected"}</span>
             <span className="crumb-separator">/</span>
             <strong>Overview</strong>
           </div>
@@ -500,7 +805,10 @@ export default function Dashboard() {
                 }
               >
                 <Zap aria-hidden="true" />
-                Review exceptions <span className="btn-count">12</span>
+                Review exceptions{" "}
+                <span className="btn-count">
+                  {formatCount(overview?.exceptions.open)}
+                </span>
               </button>
             </div>
           </div>
@@ -510,7 +818,13 @@ export default function Dashboard() {
               <Database aria-hidden="true" />
               <div>
                 <span>Active dataset</span>
-                <strong>US Equities · v2024.11.28</strong>
+                <strong>
+                  {
+                    overview?.market_data.version != null
+                      ? `Dataset version ${overview.market_data.version}`
+                      : "No market-data version selected"
+                  }
+                </strong>
               </div>
               <ChevronDown aria-hidden="true" />
             </div>
@@ -522,11 +836,7 @@ export default function Dashboard() {
               <div>
                 <span>Reporting period</span>
                 <strong>
-                  {range === "Last 7 days"
-                    ? "Last 7 days"
-                    : range === "Last 90 days"
-                      ? "Last 90 days"
-                      : "Nov 01 – Nov 30, 2024"}
+                  {range}
                 </strong>
               </div>
               <ChevronDown aria-hidden="true" />
@@ -535,9 +845,27 @@ export default function Dashboard() {
             <div className="context-spacer" />
 
             <span className="context-status">
-              <span className="status-dot green-dot" /> Data synced 8 min ago
+              <span
+                className={`status-dot ${overviewError ? "" : overviewLoading ? "" : "green-dot"
+                  }`}
+              />
+              {
+                overviewError
+                  ? "Data unavailable"
+                  : overviewLoading
+                    ? "Syncing workspace..."
+                    : overview
+                      ? "Workspace data loaded"
+                      : "No workspace selected"
+              }
             </span>
           </div>
+
+          {overviewError && (
+            <div className="workspace-error" role="alert">
+              {overviewError}
+            </div>
+          )}
 
           <section className="section">
             <div className="section-heading">
@@ -556,43 +884,55 @@ export default function Dashboard() {
             <div className="metrics-grid">
               <MetricCard
                 label="Total orders"
-                value="8,426"
-                detail="+12.4% vs prior period"
+                value={overviewLoading ? "-" : formatCount(overview?.execution.orders)}
+                detail={overviewError || (overview ? "Orders in selected period" : "Awaiting workspace data")}
                 accent="blue"
                 icon={BarChart3}
               />
               <MetricCard
                 label="Filled orders"
-                value="6,918"
-                detail="82.1% fill completion"
+                value={overviewLoading ? "-" : formatCount(overview?.execution.filled_orders)}
+                detail={`${formatPercent(
+                  overview?.execution.orders
+                    ? (overview.execution.filled_orders / overview.execution.orders) * 100
+                    : 0,
+                )} of total orders`}
                 accent="green"
                 icon={FileCheck2}
               />
               <MetricCard
                 label="Partially filled"
-                value="1,104"
-                detail="13.1% of total orders"
+                value={overviewLoading ? "-" : formatCount(overview?.execution.partially_filled_orders)}
+                detail={`${formatPercent(
+                  overview?.execution.orders
+                    ? (overview.execution.partially_filled_orders / overview.execution.orders) * 100
+                    : 0,
+                )} of total orders`}
                 accent="amber"
                 icon={Activity}
               />
               <MetricCard
                 label="Unfilled orders"
-                value="404"
-                detail="4.8% of total orders"
+                value={overviewLoading ? "-" : formatCount(overview?.execution.unfilled_orders)}
+                detail={`${formatPercent(
+                  overview?.execution.orders
+                    ? (overview.execution.unfilled_orders / overview.execution.orders) * 100
+                    : 0,
+                )} of total orders`}
                 accent="slate"
                 icon={X}
               />
               <MetricCard
                 label="Analysis complete"
-                value="6,274"
-                detail="74.4% of total · 87.1% eligible"
+                value={overviewLoading ? "-" : formatCount(overview?.execution.analyzed_orders)}
+                detail={`${formatPercent(overview?.execution.tca_coverage_percentage)} analysis coverage`}
                 accent="blue"
                 icon={LineChart}
               />
               <MetricCard
                 label="Requires review"
-                value="12"
-                detail="3 critical · 9 high priority"
+                value={overviewLoading ? "-" : formatCount(overview?.exceptions.open)}
+                detail={`${formatCount(overview?.exceptions.critical)} critical · ${formatCount(overview?.exceptions.high)} high`}
                 accent="amber"
                 icon={AlertCircle}
               />
@@ -615,24 +955,39 @@ export default function Dashboard() {
 
               <div className="analysis-body">
                 <div className="coverage-chart">
-                  <div className="donut">
+                  <div
+                    className="donut"
+                    style={{
+                      background: `conic-gradient(
+                      var(--accent, #2563eb) ${Math.min(100, Math.max(0, overview?.execution.tca_coverage_percentage ?? 0))
+                        }%,
+                      var(--border, #e5e7eb) 0
+                      )`,
+                    }}
+                  >
                     <div className="donut-center">
-                      <strong>87.1%</strong>
+                      <strong>
+                        {formatPercent(overview?.execution.tca_coverage_percentage)}
+                      </strong>
                       <span>eligible analyzed</span>
                     </div>
                   </div>
                   <div className="chart-caption">
                     <div>
                       <span className="legend-dot analyzed" /> Analyzed
-                      <strong>6,274</strong>
+                      <strong>
+                        {formatCount(overview?.execution.analyzed_orders)}
+                      </strong>
                     </div>
                     <div>
                       <span className="legend-dot failed" /> Failed
-                      <strong>928</strong>
+                      <strong>
+                        {formatCount(overview?.execution.failed_orders)}
+                      </strong>
                     </div>
                     <div>
                       <span className="legend-dot excluded" /> Excluded
-                      <strong>1,224</strong>
+                      <strong>-</strong>
                     </div>
                   </div>
                 </div>
@@ -640,14 +995,26 @@ export default function Dashboard() {
                 <div className="analysis-stats">
                   <div className="analysis-stat">
                     <span>Eligible orders</span>
-                    <strong>7,202</strong>
-                    <small>85.5% of total orders</small>
+                    <strong>
+                      {formatCount(overview?.execution.tca_requested_orders)}
+                    </strong>
+                    <small>
+                      {formatPercent(overview?.execution.tca_coverage_percentage)} analyzed
+                    </small>
                   </div>
                   <div className="analysis-stat">
                     <span>Analysis failures</span>
-                    <strong className="text-red">928</strong>
+                    <strong className="text-red">
+                      {formatCount(overview?.execution.failed_orders)}
+                    </strong>
                     <small>
-                      12.9% of eligible orders <ArrowDownRight aria-hidden="true" />
+                      {
+                        overview?.execution.tca_requested_orders
+                          ? formatPercent(
+                            (overview.execution.failed_orders / overview.execution.tca_requested_orders) * 100,
+                          ) + " of eligible orders"
+                          : "Eligible-order denominator unavailable"
+                      } <ArrowDownRight aria-hidden="true" />
                     </small>
                   </div>
                   <div className="failure-note">
@@ -655,7 +1022,7 @@ export default function Dashboard() {
                     <div>
                       <strong>Primary failure reason</strong>
                       <p>
-                        Missing arrival price benchmark <b>· 61.4%</b>
+                        Failure-reason breakdown is not available from the workspace overview.
                       </p>
                       <button type="button" onClick={() => document.getElementById("data-health")?.scrollIntoView({ behavior: "smooth" })}>
                         Inspect data quality <ArrowUpRight aria-hidden="true" />
@@ -680,17 +1047,22 @@ export default function Dashboard() {
               <div className="panel-header">
                 <div>
                   <h2>Execution quality trend</h2>
-                  <p>Median implementation shortfall · basis points</p>
+                  <p>Weighted implementation shortfall · percentage</p>
                 </div>
                 <span className="date-pill">30D <ChevronDown aria-hidden="true" /></span>
               </div>
 
               <div className="trend-value">
-                <strong>-4.8 bps</strong>
-                <span className="positive">
-                  <ArrowDownRight aria-hidden="true" /> 1.2 bps
+                <strong>
+                  {
+                    overview?.execution.weighted_shortfall_percentage == null
+                      ? "-"
+                      : `${(overview.execution.weighted_shortfall_percentage * 100).toFixed(1)} bps`
+                  }
+                </strong>
+                <span className="muted-copy">
+                  Historical comparison unavailable
                 </span>
-                <span className="muted-copy">vs prior period</span>
               </div>
 
               <ExecutionTrendChart />
@@ -700,7 +1072,7 @@ export default function Dashboard() {
                   <span className="legend-dot analyzed" /> Median IS
                 </span>
                 <span className="trend-foot-note">
-                  Sufficient sample: 6,274 orders
+                  Historical trend data unavailable
                 </span>
               </div>
             </section>
@@ -719,57 +1091,141 @@ export default function Dashboard() {
               </div>
 
               <div className="review-list">
-                <div className="review-row">
-                  <div className="priority-icon critical">
-                    <AlertCircle aria-hidden="true" />
-                  </div>
-                  <div className="review-copy">
-                    <strong>Critical slippage outlier</strong>
-                    <span>AAPL · Buy 250,000 · 18.4 bps adverse</span>
-                  </div>
-                  <span className="review-badge critical-badge">Critical</span>
-                  <span className="review-owner">Unassigned</span>
-                  <button className="row-arrow" type="button" aria-label="Open critical slippage review">
-                    <ArrowUpRight aria-hidden="true" />
+                <div className="review-summary">
+                  <label htmlFor="review-status-filter">Status</label>
+                  <select 
+                    id="review-status-filter"
+                    value={reviewStatusFilter}
+                    onChange={(event) => setReviewStatusFilter(
+                      event.target.value as ReviewStatus | "ALL",
+                    )}
+                  >
+                    <option value="ALL">All statuses</option>
+                    <option value="OPEN">Open</option>
+                    <option value="ACKNOWLEDGED">Acknowledged</option>
+                    <option value="IN_REVIEW">In review</option>
+                    <option value="RESOLVED">Resolved</option>
+                    <option value="IGNORED">Ignored</option>
+                  </select>
+
+                  <button
+                    className="text-btn"
+                    type="button"
+                    disabled={reviewQueueLoading}
+                    onClick={() => setReviewQueueReload((value) => value + 1)}
+                  >
+                    {reviewQueueLoading ? "Refreshing..." : "Refresh queue"}
                   </button>
                 </div>
 
-                <div className="review-row">
-                  <div className="priority-icon high">
-                    <AlertCircle aria-hidden="true" />
+                {reviewQueueError && (
+                  <div role="alert" className="review-summary">
+                    <span>{reviewQueueError}</span>
+                    <button
+                      className="text-btn"
+                      type="button"
+                      onClick={() => setReviewQueueReload((value) => value + 1)}
+                    >
+                      Retry
+                    </button>
                   </div>
-                  <div className="review-copy">
-                    <strong>Missing benchmark data</strong>
-                    <span>3 orders · US Equities · Nov 28</span>
-                  </div>
-                  <span className="review-badge high-badge">High</span>
-                  <span className="review-owner">Unassigned</span>
-                  <button className="row-arrow" type="button" aria-label="Open missing benchmark review">
-                    <ArrowUpRight aria-hidden="true" />
-                  </button>
-                </div>
+                )}
 
-                <div className="review-row">
-                  <div className="priority-icon medium">
-                    <Clock3 aria-hidden="true" />
-                  </div>
-                  <div className="review-copy">
-                    <strong>Review awaiting evidence</strong>
-                    <span>VWAP participation · MSFT · Order #18402</span>
-                  </div>
-                  <span className="review-badge medium-badge">Medium</span>
-                  <span className="review-owner">L. Chen</span>
-                  <button className="row-arrow" type="button" aria-label="Open evidence review">
-                    <ArrowUpRight aria-hidden="true" />
-                  </button>
-                </div>
+                {reviewQueueLoading && reviewIssues.length === 0 && (
+                  <p role="status">Loading review issues...</p>
+                )}
+
+                {!reviewQueueLoading &&
+                  !reviewQueueError &&
+                  reviewIssues.length === 0 && (
+                    <p>No review issues found for this filter.</p>
+                  )
+                }
+
+                {reviewIssues.map((issue) => {
+                  const severity = issue.severity.toLowerCase();
+
+                  return (
+                    <div className="review-row" key={issue.id}>
+                      <div
+                        className={`priority-icon ${
+                          ["critical", "high", "medium"].includes(severity)
+                            ? severity
+                            : "medium"
+                        }`}
+                      >
+                        <AlertCircle aria-hidden="true" />
+                      </div>
+
+                      <div className="review-copy">
+                        <strong>
+                          {issue.message || issue.issue_code.replaceAll("_", " ")}
+                        </strong>
+                        <span>
+                          {issue.metric} · Order {issue.order_id} ·{" "}
+                          {formatReviewDate(issue.created_at)}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`review-badge ${
+                          ["critical", "high", "medium"].includes(severity)
+                            ? `${severity}-badge`
+                            : "medium-badge"
+                        }`}
+                      >
+                        {issue.severity}
+                      </span>
+
+                      <span className="review-owner">
+                        {issue.assigned_to ? "Assigned" : "Unassigned"}
+                      </span>
+
+                      <button
+                        className="row-arrow"
+                        type="button"
+                        aria-label={`Review ${issue.issue_code}`}
+                        title={`Status: ${issue.status}`}
+                        onClick={() => {
+                          setReviewActionMessage("");
+                          setSelectedReviewIssue(issue);
+                        }}
+                      >
+                        <ArrowUpRight aria-hidden="true" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
 
+              {reviewActionMessage && (
+                <p role="status">{reviewActionMessage}</p>
+              )}
+
+
               <div className="review-summary">
-                <span><strong>12</strong> open reviews</span>
-                <span><strong>3</strong> critical / high</span>
-                <span><strong>4</strong> unassigned</span>
-                <span><strong>5</strong> awaiting evidence</span>
+                <span>
+                  <strong>{formatCount(overview?.exceptions.open)}</strong> open reviews
+                </span>
+                <span>
+                  <strong>
+                    {formatCount(
+                      (overview?.exceptions.critical ?? 0) +
+                      (overview?.exceptions.high ?? 0),
+                    )}
+                  </strong>{" "}
+                  critical / high
+                </span>
+                <span>
+                  <strong>
+                    {formatCount(overview?.exceptions.acknowledged)}
+                  </strong>{" "}
+                  acknowledged
+                </span>
+                <span>
+                  <strong>{formatCount(overview?.exceptions.in_review)}</strong>{" "}
+                  in review
+                </span>
               </div>
             </section>
 
@@ -789,26 +1245,44 @@ export default function Dashboard() {
                   <ShieldCheck aria-hidden="true" />
                 </div>
                 <div>
-                  <strong>Healthy with warnings</strong>
-                  <span>Last validated 8 minutes ago</span>
+                  <strong>
+                    {
+                      overviewLoading
+                        ? "Loading data health..."
+                        : overviewError
+                          ? "Data health unavailable"
+                          : overview?.market_data.dataset_version_id
+                            ? "Dataset version selected"
+                            : "No dataset version selected"
+                    }
+                  </strong>
+                  <span>
+                    {
+                      overview?.market_data.dataset_version_id
+                        ? "Validation details are not available in this overview."
+                        : "No validation timestamp available."
+                    }
+                  </span>
                 </div>
               </div>
 
               <div className="health-items">
                 <div>
                   <span>Timestamp coverage</span>
-                  <strong>98.6%</strong>
-                  <span className="health-good">Within threshold</span>
+                  <strong>-</strong>
+                  <span>Not provided by overview API</span>
                 </div>
+
                 <div>
                   <span>Instrument coverage</span>
-                  <strong>99.2%</strong>
-                  <span className="health-good">Within threshold</span>
+                  <strong>-</strong>
+                  <span>Not provided by overview API</span>
                 </div>
+
                 <div>
                   <span>Missing benchmark data</span>
-                  <strong>928 orders</strong>
-                  <span className="health-warning">Needs attention</span>
+                  <strong>-</strong>
+                  <span>Detailed breakdown unavailable</span>
                 </div>
               </div>
 
@@ -901,12 +1375,31 @@ export default function Dashboard() {
           <footer className="page-footer">
             <span>Quantara Pilot Workspace · Demo data only</span>
             <span>
-              © 2024 Quantara <span className="footer-dot">·</span>{" "}
+              © 2026 Quantara <span className="footer-dot">·</span>{" "}
               <a href="#audit">Audit log</a> <span className="footer-dot">·</span>{" "}
               <a href="#help">Help center</a>
             </span>
           </footer>
         </div>
+
+        {selectedReviewIssue &&
+          selectedOrganizationId &&
+          selectedProjectId && (
+            <ReviewInvestigationPanel
+              organizationId={selectedOrganizationId}
+              projectId={selectedProjectId}
+              issue={selectedReviewIssue}
+              onClose={() => setSelectedReviewIssue(null)}
+              onUpdated={(updatedIssue) => {
+                setSelectedReviewIssue(updatedIssue);
+                setReviewActionMessage(
+                  `Review status updated to ${updatedIssue.status.replaceAll("_", " ")}.`,
+                );
+                setReviewQueueReload((value) => value + 1);
+              }}
+            />
+          )
+        }
       </main>
     </div>
   );

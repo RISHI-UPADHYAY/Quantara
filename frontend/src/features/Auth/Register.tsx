@@ -1,11 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
+import { useAuth } from '../../contexts/AuthContext'
 import { getApiErrorMessage } from '../../services/api'
 import { register } from '../../services/authService'
 
 export default function Register() {
   const navigate = useNavigate()
+
+  const { login } = useAuth()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -18,8 +21,16 @@ export default function Register() {
     event.preventDefault()
     setError('')
 
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim()
+
     if (password !== confirmPassword) {
       setError('Your passwords do not match.')
+      return
+    }
+
+    if (trimmedName.length < 2) {
+      setError('Your name must contain at least 2 characters.')
       return
     }
 
@@ -27,21 +38,26 @@ export default function Register() {
 
     try {
       await register({
-        name: name.trim(),
-        email: email.trim(),
+        name: trimmedName,
+        email: trimmedEmail,
         password,
       })
 
-      navigate('/login', {
+      // AuthContext saves tokens and loads the current user.
+      await login({
+        email: trimmedEmail,
+        password,
+      })
+
+      navigate('/subscriptions', {
         replace: true,
-        state: {
-          registrationSuccess: true,
-          registeredEmail: email.trim(),
-        },
       })
     } catch (err) {
       setError(
-        getApiErrorMessage(err, 'Unable to create your account. Please try again.'),
+        getApiErrorMessage(
+          err,
+          'Unable to complete registration. Please try signing in if your account was created.',
+        ),
       )
     } finally {
       setIsSubmitting(false)
